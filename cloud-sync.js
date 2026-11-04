@@ -1,9 +1,14 @@
 // cloud-sync.js
-// INTZ v10.1 – Offline-first toveis synkronisering.
+// INTZ v10.1
 //
-// Aktiv INTZ-profil = skylagringens user_key.
-// Synknøkkel lagres lokalt for aktiv profil.
-// Konfliktregel: nyeste _updated_at vinner.
+// Offline-first toveis synkronisering.
+//
+// Automatisk synk:
+// - laster opp lokale endringer
+// - laster ned alle øktmaler
+// - laster bare ned lette aktivitetsoversikter
+//
+// Komplette historiske økter lastes ned ved behov.
 
 function activeUser() {
   return (
@@ -19,13 +24,13 @@ function nsKey(key) {
 
 function getNS(key, fallback) {
   try {
-    const current =
+    const value =
       localStorage.getItem(
         nsKey(key)
       );
 
-    if (current != null) {
-      return JSON.parse(current);
+    if (value != null) {
+      return JSON.parse(value);
     }
 
     const legacy =
@@ -36,7 +41,7 @@ function getNS(key, fallback) {
       : fallback;
   } catch (error) {
     console.warn(
-      "[INTZ] Kunne ikke lese lokal lagring:",
+      "[INTZ cloud] Kunne ikke lese lokal lagring:",
       key,
       error
     );
@@ -101,18 +106,16 @@ function createUuid(prefix = "intz") {
     "-" +
     Date.now().toString(36) +
     "-" +
-    Math.random()
-      .toString(36)
-      .slice(2)
+    Math.random().toString(36).slice(2)
   );
 }
 
 function parseTime(value) {
-  const parsed =
+  const result =
     Date.parse(value || "");
 
-  return Number.isFinite(parsed)
-    ? parsed
+  return Number.isFinite(result)
+    ? result
     : 0;
 }
 
@@ -127,10 +130,10 @@ function stableCopy(value) {
   ) {
     const result = {};
 
-    const keys =
-      Object.keys(value).sort();
-
-    for (const key of keys) {
+    for (
+      const key of
+      Object.keys(value).sort()
+    ) {
       if (
         key === "_cloud_id" ||
         key === "_cloud_synced_at" ||
@@ -188,13 +191,13 @@ function ensureMetadata(
       "pending"
   };
 
-  const calculatedHash =
+  const currentHash =
     contentHash(normalized);
 
   if (
     normalized._sync_hash &&
     normalized._sync_hash !==
-      calculatedHash
+      currentHash
   ) {
     normalized._updated_at = now;
     normalized._sync_status =
@@ -246,10 +249,7 @@ function migrateCollection(
     });
 
   if (changed) {
-    setNS(
-      storageKey,
-      migrated
-    );
+    setNS(storageKey, migrated);
   }
 
   return migrated;
@@ -280,15 +280,11 @@ function setKnownIds(
 ) {
   setNS(
     knownKey(collectionName),
-    Array.from(
-      new Set(ids)
-    )
+    Array.from(new Set(ids))
   );
 }
 
-function deletionKey(
-  collectionName
-) {
+function deletionKey(collectionName) {
   return (
     "cloudDeleted_" +
     collectionName
@@ -449,9 +445,7 @@ function markUploadError(
     new Set(attemptedIds);
 
   return items.map(item => {
-    if (
-      !ids.has(item._local_id)
-    ) {
+    if (!ids.has(item._local_id)) {
       return item;
     }
 
@@ -468,8 +462,7 @@ function normalizeCloudRow(
 ) {
   const payload =
     row?.payload &&
-    typeof row.payload ===
-      "object"
+    typeof row.payload === "object"
       ? row.payload
       : {};
 
@@ -664,7 +657,7 @@ async function uploadCollection({
     ...changedDeletions
   ];
 
-  if (attempted.length === 0) {
+  if (!attempted.length) {
     return {
       uploaded: 0,
       deleted: 0
@@ -713,9 +706,7 @@ async function uploadCollection({
         )
       );
 
-    for (
-      const item of localItems
-    ) {
+    for (const item of localItems) {
       knownIds.add(
         item._local_id
       );
@@ -837,6 +828,10 @@ async function syncUp() {
   };
 }
 
+/*
+ * Manuell full synk beholdes for feilsøking.
+ * Denne kan fortsatt kreve mye localStorage.
+ */
 async function syncDown() {
   const credentials =
     await ensureCloud();
@@ -954,6 +949,377 @@ async function syncAll() {
   };
 }
 
+function normalizeSessionSummary(row) {
+  return {
+    id:
+      row.local_id,
+
+    _local_id:
+      row.local_id,
+
+    _cloud_id:
+      row.id || null,
+
+    name:
+      row.name || "Økt",
+
+    startedAt:
+      row.started_at || null,
+
+    endedAt:
+      row.ended_at || null,
+
+    durationSec:
+      Number(
+        row.duration_sec || 0
+      ),
+
+    pointCount:
+      Number(
+        row.point_count || 0
+      ),
+
+    distanceM:
+      Number(
+        row.distance_m || 0
+      ),
+
+    lt1:
+      row.lt1 ?? null,
+
+    lt2:
+      row.lt2 ?? null,
+
+    massKg:
+      row.massKg ??
+      row.masskg ??
+      null,
+
+    reps:
+      row.reps ?? null,
+
+    notes:
+      row.notes ?? "",
+
+    _updated_at:
+      row.client_updated_at,
+
+    _deleted_at:
+      row.deleted_at || null,
+
+    _remote_only:
+      true,
+
+    _sync_status:
+      "synced"
+  };
+}
+
+async function syncSessionIndex() {
+  const credentials =
+    await ensureCloud();
+
+  const rows =
+    await window.INTZSupabase
+      .listSessionSummaries(
+        credentials.userKey,
+        credentials.syncSecret
+      );
+
+  const summaries =
+    rows
+      .map(
+        normalizeSessionSummary
+      )
+      .filter(
+        summary =>
+          summary._local_id &&
+          !summary._deleted_at
+      );
+
+  setNS(
+    "sessionIndex",
+    summaries
+  );
+
+  setKnownIds(
+    "sessions",
+    rows
+      .map(row => row.local_id)
+      .filter(Boolean)
+  );
+
+  window.dispatchEvent(
+    new CustomEvent(
+      "intz:historychange",
+      {
+        detail: {
+          count:
+            summaries.length
+        }
+      }
+    )
+  );
+
+  return summaries;
+}
+
+function getSessionIndex() {
+  const value =
+    getNS(
+      "sessionIndex",
+      []
+    );
+
+  return Array.isArray(value)
+    ? value
+    : [];
+}
+
+function normalizeDownloadedSession(
+  row
+) {
+  const payload =
+    row?.payload &&
+    typeof row.payload === "object"
+      ? row.payload
+      : {};
+
+  const session = {
+    ...payload,
+
+    id:
+      payload.id ||
+      row.local_id,
+
+    _local_id:
+      row.local_id,
+
+    _cloud_id:
+      row.id,
+
+    name:
+      payload.name ||
+      row.name ||
+      "Økt",
+
+    startedAt:
+      payload.startedAt ||
+      row.started_at ||
+      null,
+
+    endedAt:
+      payload.endedAt ||
+      row.ended_at ||
+      null,
+
+    _schema_version:
+      Number(
+        row.schema_version ||
+        payload._schema_version ||
+        1
+      ),
+
+    _updated_at:
+      row.client_updated_at ||
+      payload._updated_at ||
+      new Date().toISOString(),
+
+    _deleted_at:
+      row.deleted_at || null,
+
+    _sync_status:
+      "synced",
+
+    _cloud_synced_at:
+      new Date().toISOString()
+  };
+
+  session._sync_hash =
+    contentHash(session);
+
+  return session;
+}
+
+async function ensureSessionsAvailable(
+  localIds
+) {
+  const requestedIds = Array.from(
+    new Set(
+      (localIds || [])
+        .map(id =>
+          String(id || "").trim()
+        )
+        .filter(Boolean)
+    )
+  );
+
+  if (!requestedIds.length) {
+    return [];
+  }
+
+  const sessions =
+    migrateCollection(
+      "sessions",
+      "session"
+    );
+
+  const byId =
+    new Map();
+
+  for (const session of sessions) {
+    const id =
+      session._local_id ||
+      session.id;
+
+    if (id) {
+      byId.set(id, session);
+    }
+  }
+
+  const missingIds =
+    requestedIds.filter(id => {
+      const session =
+        byId.get(id);
+
+      return !(
+        session &&
+        Array.isArray(
+          session.points
+        ) &&
+        session.points.length
+      );
+    });
+
+  if (missingIds.length) {
+    const credentials =
+      await ensureCloud();
+
+    const rows =
+      await window.INTZSupabase
+        .getSessionsByLocalIds(
+          credentials.userKey,
+          credentials.syncSecret,
+          missingIds
+        );
+
+    for (const row of rows) {
+      const session =
+        normalizeDownloadedSession(
+          row
+        );
+
+      if (
+        session._local_id &&
+        !session._deleted_at
+      ) {
+        byId.set(
+          session._local_id,
+          session
+        );
+      }
+    }
+
+    try {
+      setNS(
+        "sessions",
+        Array.from(byId.values())
+      );
+    } catch (error) {
+      /*
+       * Hvis localStorage er full, beholdes den opprinnelige
+       * listen. Det gis en tydelig feil til brukeren.
+       */
+      throw new Error(
+        "Det er ikke nok lokal lagringsplass til å hente de valgte øktene. Slett lokale aktiviteter og prøv igjen."
+      );
+    }
+  }
+
+  return requestedIds
+    .map(id =>
+      byId.get(id)
+    )
+    .filter(Boolean);
+}
+
+async function syncAutomatic() {
+  const uploadResult =
+    await syncUp();
+
+  const credentials =
+    await ensureCloud();
+
+  const localWorkouts =
+    migrateCollection(
+      "custom_workouts_v2",
+      "workout"
+    );
+
+  const cloudWorkouts =
+    await window.INTZSupabase
+      .listWorkouts(
+        credentials.userKey,
+        credentials.syncSecret
+      );
+
+  const workoutMerge =
+    mergeCollections(
+      localWorkouts,
+      cloudWorkouts,
+      "workout"
+    );
+
+  setNS(
+    "custom_workouts_v2",
+    workoutMerge.items
+  );
+
+  setKnownIds(
+    "workouts",
+    cloudWorkouts
+      .map(row => row.local_id)
+      .filter(Boolean)
+  );
+
+  const history =
+    await syncSessionIndex();
+
+  window.dispatchEvent(
+    new CustomEvent(
+      "intz:datachange",
+      {
+        detail: {
+          type:
+            "automatic-sync",
+
+          workouts:
+            workoutMerge,
+
+          historyCount:
+            history.length
+        }
+      }
+    )
+  );
+
+  return {
+    ...uploadResult,
+
+    workouts_downloaded:
+      workoutMerge.downloaded,
+
+    workouts_replaced:
+      workoutMerge.replaced,
+
+    workouts_removed:
+      workoutMerge.deleted,
+
+    history_count:
+      history.length
+  };
+}
+
 function touch(
   item,
   prefix = "item"
@@ -1013,6 +1379,10 @@ window.INTZCloud = {
   syncUp,
   syncDown,
   syncAll,
+  syncAutomatic,
+  syncSessionIndex,
+  ensureSessionsAvailable,
+  getSessionIndex,
   touch,
   softDelete,
   visible,
