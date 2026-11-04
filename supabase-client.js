@@ -1,9 +1,16 @@
 // supabase-client.js
-// INTZ v10.1 – Supabase RPC-klient uten separat innlogging.
+// INTZ v10.1
 //
+// Supabase RPC-klient uten Supabase Auth.
 // Aktiv INTZ-profil brukes som user_key.
-// En privat synknøkkel brukes til å kontrollere tilgangen.
-// Tabellenes data er ikke gjort direkte tilgjengelige for anon-rollen.
+// Privat synknøkkel brukes som passord.
+//
+// API-et støtter:
+// - registrering og verifisering
+// - synkronisering av øktmaler
+// - synkronisering av komplette treningsøkter
+// - lett historikkoversikt
+// - selektiv nedlasting av komplette økter
 
 import {
   createClient
@@ -94,7 +101,7 @@ async function registerOrVerify(
       syncSecret
     );
 
-  const data = await callRpc(
+  const result = await callRpc(
     "intz_register_or_verify",
     {
       p_user_key:
@@ -105,7 +112,7 @@ async function registerOrVerify(
     }
   );
 
-  if (data !== true) {
+  if (result !== true) {
     throw new Error(
       "Supabase avviste bruker eller synknøkkel."
     );
@@ -188,7 +195,7 @@ async function upsertWorkouts(
     );
   }
 
-  if (workouts.length === 0) {
+  if (!workouts.length) {
     return [];
   }
 
@@ -228,7 +235,7 @@ async function upsertSessions(
     );
   }
 
-  if (sessions.length === 0) {
+  if (!sessions.length) {
     return [];
   }
 
@@ -277,6 +284,10 @@ async function listWorkouts(
     : [];
 }
 
+/*
+ * Beholdes for manuell full nedlasting.
+ * Automatisk synk bruker ikke denne funksjonen.
+ */
 async function listSessions(
   userKey,
   syncSecret
@@ -303,6 +314,76 @@ async function listSessions(
     : [];
 }
 
+async function listSessionSummaries(
+  userKey,
+  syncSecret
+) {
+  const credentials =
+    validateCredentials(
+      userKey,
+      syncSecret
+    );
+
+  const data = await callRpc(
+    "intz_list_session_summaries",
+    {
+      p_user_key:
+        credentials.userKey,
+
+      p_sync_secret:
+        credentials.syncSecret
+    }
+  );
+
+  return Array.isArray(data)
+    ? data
+    : [];
+}
+
+async function getSessionsByLocalIds(
+  userKey,
+  syncSecret,
+  localIds
+) {
+  const credentials =
+    validateCredentials(
+      userKey,
+      syncSecret
+    );
+
+  const ids = Array.from(
+    new Set(
+      (localIds || [])
+        .map(id =>
+          String(id || "").trim()
+        )
+        .filter(Boolean)
+    )
+  );
+
+  if (!ids.length) {
+    return [];
+  }
+
+  const data = await callRpc(
+    "intz_get_sessions_by_local_ids",
+    {
+      p_user_key:
+        credentials.userKey,
+
+      p_sync_secret:
+        credentials.syncSecret,
+
+      p_local_ids:
+        ids
+    }
+  );
+
+  return Array.isArray(data)
+    ? data
+    : [];
+}
+
 window.INTZSupabase = {
   supabase,
   normalizeUserKey,
@@ -312,5 +393,7 @@ window.INTZSupabase = {
   upsertSessions,
   listWorkouts,
   listSessions,
+  listSessionSummaries,
+  getSessionsByLocalIds,
   SUPABASE_URL
 };
