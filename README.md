@@ -1,3 +1,3 @@
-# INTZ
-INTZ_10.1_baseline
-Hele appen er hentet fra Testrepo 13. mars 2026. Dette funker men har potensiale for videreutvikling og finpussing. Fortsetter utvikling i testrepo før dette repoet oppdateres med nytt, forbedret og fungerende INTZ-app. Jobber videre med kobling til supabase.
+Starter "På nytt" med å laste opp backup av repo "260311 1310 Test-main". Copilot begynte å tulle fælt.
+Neste iterasjon blir å få synkroniseringsfunksjon med supabase. Før jeg begynner med det skal jeg prøve å forenkle litt slik at neste iterasjoner blir greie. Jeg vil for eksempel at pulskoblingen ikke forsvinner når man navigerer bort fra øktsida.
+30.03.2026 11:00: Jeg sender over 12 filer, tre om gangen. Ikke gjør noen analyse av disse før jeg har lastet over alle. Når alle er lastet opp vil jeg at du vurdere forenklinger, slik at vi får færrest mulig filer. I denne prosessen skal du vurdere muligheten til at BLE-tilkoblingene ikke brytes når man navigerer seg bort fra hovedsiden. Det må derimot ikke medføre at filene potensielt blir for store. Hensikten med dette er å gjøre iterasjoner lettere. Spesielt ved neste store revisjon da jeg vil koble appen mot supabase for synkronisering av treningsøkter og data (også mellom enhete

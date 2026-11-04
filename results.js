@@ -1,130 +1,914 @@
+// results.js
+// INTZ v10.1 – Resultatvisning, TCX-eksport og JSON-eksport.
 
-function activeUser(){ return localStorage.getItem('active_user') || 'default'; }
-function nsKey(k){ return 'u:'+activeUser()+':'+k; }
-function getNS(k, d){ try{ const v=localStorage.getItem(nsKey(k)); if(v!=null) return JSON.parse(v); const ov=localStorage.getItem(k); return ov!=null? JSON.parse(ov): d; }catch(e){ return d; } }
-function setNS(k, v){ localStorage.setItem(nsKey(k), JSON.stringify(v)); }
-(function(){
-  const $=id=>document.getElementById(id);
-  function showErr(e){ try{ $('err-card')?.classList.remove('hidden'); const s=(e&&e.stack)? e.stack: (e?.message||String(e)); $('err-log').textContent += s+'\n'; }catch(_){} }
-  window.addEventListener('error', e=> showErr(e.error||e.message));
-  window.addEventListener('unhandledrejection', e=> showErr(e.reason||e));
+let SESSION = null;
 
-  let SESSION=null; let CAN,CTX,DPR;
-  function pickSession(){ const id=location.hash? location.hash.substring(1):''; const arr=getNS('sessions',[]); if(!arr||!arr.length) return null; if(id){ return arr.find(s=> s.id===id) || null; } return arr[arr.length-1]; }
-  function formatMMSS(sec){ sec=Math.max(0, Math.round(sec)); const m=Math.floor(sec/60), s=String(sec%60).padStart(2,'0'); return `${m}:${s}`; }
-  function avg(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length:0; }
-
-  function computeSummary(s){
-  const pts=s.points||[];
-  if(!pts.length) return {dur:0,dist:0,avgHR:0,avgW:0,maxHR:0,elev:0,tss:0};
-  const dur = Math.max(0, (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime())/1000);
-  const dist = (pts[pts.length-1].dist_m||0)/1000;
-  let sumHR=0,cntHR=0,sumW=0,cntW=0,maxHR=0;
-  let elev=0; let last=null; const LTHR = s.lt2||160; let tss=0;
-  for(const p of pts){
-    if(p.hr){ sumHR+=p.hr; cntHR++; if(p.hr>maxHR) maxHR=p.hr; }
-    if(p.watt!=null){ sumW += p.watt; cntW++; }
-    if(last){
-      const dt = (p.ts - last.ts)/1000;
-      const gradeFrac = (p.grade||0)/100;
-      const dh = (p.speed_ms||0) * gradeFrac * dt;
-      if(dh>0) elev += dh;
-      const hr = p.hr||0; const ifHr = LTHR>0? (hr/LTHR):0; tss += (dt/3600) * (ifHr*ifHr) * 100;
-    }
-    last=p;
-  }
-  const avgHR= cntHR? Math.round(sumHR/cntHR):0;
-  const avgW= cntW? Math.round(sumW/cntW):0;
-  return {dur,dist,avgHR,avgW,maxHR:Math.round(maxHR),elev:Math.round(elev),tss:Math.round(tss)};
+function activeUser() {
+  return (
+    localStorage.getItem("active_user") ||
+    "default"
+  );
 }
 
-  function renderSummary(){ const s=SESSION; const sum=computeSummary(s); const when=new Date(s.startedAt||Date.now()); const name=s.name||'Økt'; const reps=s.reps||0; $('summary').innerHTML = `
-  <div style="display:grid;gap:4px">
-    <div><strong>${name}</strong></div>
-    <div class="small">${when.toLocaleString()}</div>
-    <div>- Varighet: ${formatMMSS(sum.dur)}</div>
-    <div>- Distanse: ${(isFinite(sum.dist)? sum.dist.toFixed(2):'0.00')} km</div>
-    <div>- Høydemeter: ${sum.elev} m</div>
-    <div>- Snitt HR: ${sum.avgHR||'–'} bpm · Maks HR: ${sum.maxHR||'–'} bpm</div>
-    <div>- Snitt Watt: ${sum.avgW||'–'} W</div>
-    <div>- Antall drag: ${reps}</div>
-    <div>- TSS: ${sum.tss}</div>
-  </div>`;
-$('notes').value = s.notes||''; }
+function nsKey(key) {
+  return `u:${activeUser()}:${key}`;
+}
 
-  function splitLaps(s){ const pts=s.points||[]; if(!pts.length) return []; const laps=[]; let cur={startTs:pts[0].ts, distStart:pts[0].dist_m||0, pts:[], hrSum:0, hrCnt:0, hrMax:0, rpeSum:0, rpeCnt:0}; let lastPhase=pts[0].phase||'', lastRep=pts[0].rep||0; for(const p of pts){ const phase=p.phase||''; const rep=p.rep||0; const boundary = (phase==='work' && rep!==lastRep) || (phase!=='work' && lastPhase==='work');
-      if(boundary && cur.pts.length){ const last=cur.pts[cur.pts.length-1]; cur.endTs=last.ts; cur.distEnd=last.dist_m||0; laps.push(cur); cur={startTs:p.ts, distStart:p.dist_m||0, pts:[], hrSum:0, hrCnt:0, hrMax:0, rpeSum:0, rpeCnt:0}; }
-      cur.pts.push(p); if(p.hr){ cur.hrSum+=p.hr; cur.hrCnt++; if(p.hr>cur.hrMax) cur.hrMax=p.hr; } if(typeof p.rpe==='number'){ cur.rpeSum+=p.rpe; cur.rpeCnt++; } lastPhase=phase; lastRep=rep;
+function getNS(key, fallback) {
+  try {
+    const current =
+      localStorage.getItem(nsKey(key));
+
+    if (current != null) {
+      return JSON.parse(current);
     }
-    if(cur.pts.length){ const last=cur.pts[cur.pts.length-1]; cur.endTs=last.ts; cur.distEnd=last.dist_m||0; laps.push(cur); }
-    const workLaps = laps.filter(l=> l.pts.some(p=> (p.phase||'')==='work'));
-    return workLaps.length? workLaps : (laps.length? [ { ...laps[0] } ] : []);
+
+    const legacy =
+      localStorage.getItem(key);
+
+    return legacy != null
+      ? JSON.parse(legacy)
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setNS(key, value) {
+  localStorage.setItem(
+    nsKey(key),
+    JSON.stringify(value)
+  );
+}
+
+function currentRoute() {
+  return (
+    window.INTZRoute ||
+    (
+      window.INTZRouter &&
+      window.INTZRouter.parseHash &&
+      window.INTZRouter.parseHash()
+    ) ||
+    {
+      view: "dashboard",
+      arg: null
+    }
+  );
+}
+
+function visibleSessions() {
+  const sessions =
+    getNS("sessions", []);
+
+  if (!Array.isArray(sessions)) {
+    return [];
   }
 
-  function renderLaps(){ const table=$('laps'); const laps=splitLaps(SESSION); if(!table) return; const headers=['#','Varighet','Distanse (km)','Snitt HR','Snitt W','Snitt fart (km/t)','Snitt RPE']; table.innerHTML='<thead><tr>'+headers.map(h=>`<th style="text-align:left;padding:4px 6px">${h}</th>`).join('')+'</tr></thead><tbody></tbody>'; const tb=table.querySelector('tbody');
-    laps.forEach((l,i)=>{ const dur=(l.endTs-l.startTs)/1000; const dist=Math.max(0,(l.distEnd-l.distStart)/1000); const HR= l.hrCnt? Math.round(l.hrSum/l.hrCnt):0; const wAvg=Math.round(avg(l.pts.map(p=> p.watt||0))); const spAvg=avg(l.pts.map(p=> (p.speed_ms||0)*3.6)); const rpeAvg = l.rpeCnt? (l.rpeSum/l.rpeCnt).toFixed(1):'–'; const tr=document.createElement('tr'); const cells=[String(i+1), formatMMSS(dur), dist.toFixed(2), HR? String(HR):'–', wAvg? String(wAvg):'–', isFinite(spAvg)? spAvg.toFixed(1):'–', String(rpeAvg)]; cells.forEach(c=>{ const td=document.createElement('td'); td.style.padding='4px 6px'; td.textContent=c; tr.appendChild(td); }); tb.appendChild(tr); }); }
+  return sessions.filter(
+    session =>
+      session &&
+      !session._deleted_at
+  );
+}
 
-  function toTCX(s){ const pts=s.points||[]; if(!pts.length) return ''; function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
-    const t0=new Date(pts[0].ts).toISOString(); const laps=splitLaps(s);
-    function lapXml(l){ const startIso=new Date(l.startTs).toISOString(); const durSec=Math.max(1, Math.round((l.endTs - l.startTs)/1000)); const distM = Math.max(0, Math.round((l.distEnd - l.distStart)||0)); const avgHR = l.hrCnt? Math.round(l.hrSum/l.hrCnt):0; const maxHR = l.hrMax||0; const trackpoints=l.pts.map(p=> `
-        <Trackpoint>
-          <Time>${new Date(p.ts).toISOString()}</Time>
-          <DistanceMeters>${((p.dist_m||0)).toFixed(2)}</DistanceMeters>
-          <HeartRateBpm><Value>${p.hr||0}</Value></HeartRateBpm>
-          <Extensions>
-            <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(p.speed_ms||0).toFixed(3)}</Speed><Watts>${Math.round(p.watt||0)}</Watts></TPX>
-          </Extensions>
-        </Trackpoint>`).join('');
+function pickSession() {
+  const route = currentRoute();
+
+  const id =
+    route.view === "results" &&
+    route.arg
+      ? route.arg
+      : (
+          location.hash.startsWith(
+            "#results:"
+          )
+            ? location.hash.slice(9)
+            : null
+        );
+
+  const sessions =
+    visibleSessions();
+
+  if (!sessions.length) {
+    return null;
+  }
+
+  if (id) {
+    return (
+      sessions.find(
+        session =>
+          session.id === id ||
+          session._local_id === id
+      ) || null
+    );
+  }
+
+  return sessions[
+    sessions.length - 1
+  ];
+}
+
+function formatMMSS(seconds) {
+  const total =
+    Math.max(
+      0,
+      Math.floor(
+        Number(seconds) || 0
+      )
+    );
+
+  const minutes =
+    Math.floor(total / 60);
+
+  return (
+    minutes +
+    ":" +
+    String(total % 60)
+      .padStart(2, "0")
+  );
+}
+
+function average(values) {
+  return values.length
+    ? values.reduce(
+        (sum, value) =>
+          sum + value,
+        0
+      ) / values.length
+    : null;
+}
+
+function computeSummary(session) {
+  const points =
+    Array.isArray(session.points)
+      ? session.points
+      : [];
+
+  const duration =
+    session.startedAt &&
+    session.endedAt
+      ? Math.max(
+          0,
+          (
+            new Date(session.endedAt) -
+            new Date(session.startedAt)
+          ) / 1000
+        )
+      : 0;
+
+  const heartRates =
+    points
+      .map(point =>
+        Number(point.hr)
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value > 0
+      );
+
+  const watts =
+    points
+      .map(point =>
+        Number(point.watt)
+      )
+      .filter(Number.isFinite);
+
+  const lastPoint =
+    points.length
+      ? points[points.length - 1]
+      : null;
+
+  const distanceMetres =
+    Number(lastPoint?.dist_m);
+
+  return {
+    points,
+    duration,
+
+    distanceKm:
+      Number.isFinite(
+        distanceMetres
+      )
+        ? distanceMetres / 1000
+        : 0,
+
+    averageHr:
+      average(heartRates),
+
+    maximumHr:
+      heartRates.length
+        ? Math.max(...heartRates)
+        : null,
+
+    averageWatt:
+      average(watts)
+  };
+}
+
+function renderSummary(session) {
+  const target =
+    document.getElementById(
+      "summary"
+    );
+
+  if (!target) {
+    return;
+  }
+
+  const summary =
+    computeSummary(session);
+
+  target.innerHTML = `
+    <div>
+      <strong>
+        ${session.name || "Økt"}
+      </strong>
+    </div>
+
+    <div>
+      Varighet:
+      ${formatMMSS(summary.duration)}
+    </div>
+
+    <div>
+      Distanse:
+      ${summary.distanceKm.toFixed(2)}
+      km
+    </div>
+
+    <div>
+      Snittpuls:
+      ${
+        summary.averageHr != null
+          ? Math.round(
+              summary.averageHr
+            ) + " bpm"
+          : "–"
+      }
+    </div>
+
+    <div>
+      Makspuls:
+      ${
+        summary.maximumHr != null
+          ? Math.round(
+              summary.maximumHr
+            ) + " bpm"
+          : "–"
+      }
+    </div>
+
+    <div>
+      Snittwatt:
+      ${
+        summary.averageWatt != null
+          ? Math.round(
+              summary.averageWatt
+            ) + " W"
+          : "–"
+      }
+    </div>
+
+    <div>
+      Datapunkter:
+      ${summary.points.length}
+    </div>
+  `;
+}
+
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function pointTimestamp(
+  point,
+  fallback
+) {
+  if (
+    point?.iso &&
+    !Number.isNaN(
+      Date.parse(point.iso)
+    )
+  ) {
+    return new Date(
+      point.iso
+    ).toISOString();
+  }
+
+  const timestamp =
+    Number(point?.ts);
+
+  if (
+    Number.isFinite(timestamp)
+  ) {
+    return new Date(
+      timestamp
+    ).toISOString();
+  }
+
+  return fallback;
+}
+
+function buildTCX(session) {
+  const points =
+    Array.isArray(session.points)
+      ? session.points
+      : [];
+
+  if (!points.length) {
+    throw new Error(
+      "Økten inneholder ingen datapunkter."
+    );
+  }
+
+  const summary =
+    computeSummary(session);
+
+  const startTime =
+    session.startedAt &&
+    !Number.isNaN(
+      Date.parse(session.startedAt)
+    )
+      ? new Date(
+          session.startedAt
+        ).toISOString()
+      : pointTimestamp(
+          points[0],
+          new Date().toISOString()
+        );
+
+  const totalDistanceMetres =
+    Math.max(
+      0,
+      Math.round(
+        summary.distanceKm * 1000
+      )
+    );
+
+  const averageHr =
+    summary.averageHr != null
+      ? Math.round(
+          summary.averageHr
+        )
+      : 0;
+
+  const maximumHr =
+    summary.maximumHr != null
+      ? Math.round(
+          summary.maximumHr
+        )
+      : 0;
+
+  const trackpoints =
+    points.map(point => {
+      const time =
+        pointTimestamp(
+          point,
+          startTime
+        );
+
+      const distance =
+        Math.max(
+          0,
+          Number(point.dist_m) || 0
+        );
+
+      const heartRate =
+        Math.max(
+          0,
+          Math.round(
+            Number(point.hr) || 0
+          )
+        );
+
+      const speed =
+        Math.max(
+          0,
+          Number(point.speed_ms) || 0
+        );
+
+      const watt =
+        Math.max(
+          0,
+          Math.round(
+            Number(point.watt) || 0
+          )
+        );
+
       return `
-      <Lap StartTime="${startIso}">
-        <TotalTimeSeconds>${durSec}</TotalTimeSeconds>
-        <DistanceMeters>${distM}</DistanceMeters>
-        <MaximumHeartRateBpm><Value>${maxHR}</Value></MaximumHeartRateBpm>
-        <AverageHeartRateBpm><Value>${avgHR}</Value></AverageHeartRateBpm>
-        <Intensity>Active</Intensity>
-        <TriggerMethod>Manual</TriggerMethod>
-        <Track>${trackpoints}\n        </Track>
-      </Lap>`; }
-    const lapsXml = laps.map(lapXml).join('\n');
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        <Trackpoint>
+          <Time>${time}</Time>
+          <DistanceMeters>${distance.toFixed(2)}</DistanceMeters>
+          ${
+            heartRate > 0
+              ? `
+          <HeartRateBpm>
+            <Value>${heartRate}</Value>
+          </HeartRateBpm>`
+              : ""
+          }
+          <Extensions>
+            <ns3:TPX>
+              <ns3:Speed>${speed.toFixed(3)}</ns3:Speed>
+              <ns3:Watts>${watt}</ns3:Watts>
+            </ns3:TPX>
+          </Extensions>
+        </Trackpoint>
+      `;
+    }).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase
+  xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2"
+  xsi:schemaLocation="
+    http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2
+    http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd
+  "
+>
   <Activities>
     <Activity Sport="Running">
-      <Id>${t0}</Id>
-${lapsXml}
-      <Notes>${esc(s.notes||'')}</Notes>
+      <Id>${startTime}</Id>
+
+      <Lap StartTime="${startTime}">
+        <TotalTimeSeconds>${Math.round(summary.duration)}</TotalTimeSeconds>
+        <DistanceMeters>${totalDistanceMetres}</DistanceMeters>
+        <Calories>0</Calories>
+
+        ${
+          averageHr > 0
+            ? `
+        <AverageHeartRateBpm>
+          <Value>${averageHr}</Value>
+        </AverageHeartRateBpm>`
+            : ""
+        }
+
+        ${
+          maximumHr > 0
+            ? `
+        <MaximumHeartRateBpm>
+          <Value>${maximumHr}</Value>
+        </MaximumHeartRateBpm>`
+            : ""
+        }
+
+        <Intensity>Active</Intensity>
+        <TriggerMethod>Manual</TriggerMethod>
+
+        <Track>
+          ${trackpoints}
+        </Track>
+      </Lap>
+
+      <Notes>${xmlEscape(session.notes || "")}</Notes>
     </Activity>
   </Activities>
-</TrainingCenterDatabase>`; }
+</TrainingCenterDatabase>`;
+}
 
-  function download(name, content, mime){ const blob=new Blob([content],{type:mime}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+function safeFileName(value) {
+  return String(value || "intz-okt")
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 80) ||
+    "intz-okt";
+}
 
-  function setupButtons(){ $('btn-download-tcx')?.addEventListener('click', ()=>{ try{ const xml=toTCX(SESSION); if(!xml){ alert('Ingen data i økta.'); return; } const name=(SESSION.name||'okt')+'.tcx'; download(name, xml, 'application/vnd.garmin.tcx+xml'); }catch(e){ showErr(e); alert('TCX-eksport feilet. Se feilpanel.'); } }); $('btn-dump-json')?.addEventListener('click', ()=>{ try{ download((SESSION.name||'okt')+'.json', JSON.stringify(SESSION,null,2),'application/json'); }catch(e){ showErr(e); } }); $('save-notes')?.addEventListener('click', ()=>{ try{ const arr=getNS('sessions',[]); const idx=arr.findIndex(x=>x.id===SESSION.id); if(idx>=0){ arr[idx]={...arr[idx], notes:$('notes').value||''}; setNS('sessions',arr); alert('Lagret merknader.'); } }catch(e){ showErr(e); } }); }
+function downloadBlob(
+  fileName,
+  content,
+  contentType
+) {
+  const blob =
+    new Blob(
+      [content],
+      {
+        type: contentType
+      }
+    );
 
-  function resizeCanvas(){ if(!CAN) return; const rect=CAN.getBoundingClientRect(); CAN.width=Math.floor(rect.width*(DPR||1)); CAN.height=Math.floor(rect.height*(DPR||1)); }
+  const url =
+    URL.createObjectURL(blob);
 
-  function draw(){ if(!CTX||!CAN||!SESSION) return; const pts=SESSION.points||[]; const showHR=$('r-show-hr')?.checked; const showWatt=$('r-show-watt')?.checked; const showSpeed=$('r-show-speed')?.checked; const showRPE=$('r-show-rpe')?.checked; const W=CAN.width,H=CAN.height; const padL=60*DPR,padR=60*DPR,padT=30*DPR,padB=24*DPR; const plotW=W-padL-padR, plotH=H-padT-padB; CTX.clearRect(0,0,W,H); if(!pts.length||plotW<=0||plotH<=0){ return; }
-    const t0=pts[0].ts, tN=pts[pts.length-1].ts; const xmin=t0, xmax=tN; const hrMin=80, hrMax=200; const yHR=v=> padT + (1 - (v-hrMin)/(hrMax-hrMin||1))*plotH; const wVals=pts.map(p=> p.watt||0), wmin=Math.min(...wVals), wmax=Math.max(...wVals); const yW=v=> padT + (1 - (v-wmin)/Math.max(1,(wmax-wmin))) * plotH; const spVals=pts.map(p=> (p.speed_ms||0)*3.6), smin=Math.min(...spVals), smax=Math.max(...spVals); const yS=v=> padT + (1 - (v - smin)/Math.max(1,(smax-smin))) * plotH; const yR=v=> padT + (1 - (v/10)) * plotH; const xT=t=> padL + (t-xmin)/(xmax-xmin||1)*plotW;
-    CTX.strokeStyle='#e2e8f0'; CTX.lineWidth=1; CTX.beginPath(); const totSec=Math.max(1, Math.round((xmax-xmin)/1000)); for(let sec=0; sec<=totSec; sec+=60){ const t=xmin+sec*1000; const x=xT(t); CTX.moveTo(x,padT); CTX.lineTo(x,padT+plotH);} CTX.stroke();
-    CTX.fillStyle='#ef4444'; CTX.font=`${12*DPR}px system-ui`; for(let v=hrMin; v<=hrMax; v+=20){ CTX.fillText(String(v), 8*DPR, yHR(v)+4*DPR); }
-    if(showWatt){ CTX.fillStyle='#16a34a'; CTX.textAlign='right'; const ticks=5; for(let i=0;i<=ticks;i++){ const v=wmin + (wmax-wmin)*i/ticks; CTX.fillText(String(Math.round(v)), W-8*DPR, yW(v)+4*DPR); } CTX.textAlign='left'; }
-    if(showSpeed){ CTX.fillStyle='#2563eb'; CTX.textAlign='center'; const ticks=5; for(let i=0;i<=ticks;i++){ const v=smin + (smax-smin)*i/ticks; const x=padL + plotW*i/ticks; CTX.fillText(String(isFinite(v)? v.toFixed(1):'0.0'), x, (padT-8*DPR)); } CTX.textAlign='left'; }
-    if(showRPE){ CTX.fillStyle='#d97706'; CTX.textAlign='right'; for(let v=0; v<=10; v+=2){ CTX.fillText(String(v), W-40*DPR, yR(v)+4*DPR); } CTX.textAlign='left'; }
-    function drawLine(extract,color,ymap){ const vals=pts.map(extract); const any = vals.some(v=> v!=null); if(!any) return; CTX.strokeStyle=color; CTX.lineWidth=2*DPR; CTX.beginPath(); let moved=false; for(let i=0;i<pts.length;i++){ const p=pts[i]; const val=vals[i]; if(val==null) continue; const x=xT(p.ts), y=ymap(val); if(!moved){ CTX.moveTo(x,y); moved=true; } else CTX.lineTo(x,y); } CTX.stroke(); }
-    if(showHR) drawLine(p=>p.hr, '#ef4444', yHR); if(showWatt) drawLine(p=>p.watt, '#16a34a', yW); if(showSpeed) drawLine(p=> (p.speed_ms||0)*3.6, '#2563eb', yS); if(showRPE) drawLine(p=>p.rpe, '#d97706', yR);
+  const anchor =
+    document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.style.display = "none";
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(
+    () => {
+      URL.revokeObjectURL(url);
+    },
+    1500
+  );
+}
+
+function saveNotes() {
+  if (!SESSION) {
+    return;
   }
 
-  function renderZones(){ const c=$('zones'); if(!c||!SESSION) return; const ctx=c.getContext('2d'); const w=c.width, h=c.height; ctx.clearRect(0,0,w,h); const pts=SESSION.points||[]; const LT1=SESSION.lt1||135, LT2=SESSION.lt2||160; let t1=0,t2=0,t3=0; for(let i=1;i<pts.length;i++){ const dt=(pts[i].ts-pts[i-1].ts)/1000; const hr=pts[i].hr||0; if(hr<LT1) t1+=dt; else if(hr<LT2) t2+=dt; else t3+=dt; } const total=Math.max(1, t1+t2+t3); const bars=[{v:t1,c:'#86efac',label:'<LT1'},{v:t2,c:'#fde68a',label:'LT1–LT2'},{v:t3,c:'#fca5a5',label:'>LT2'}]; const pad=20; const bw=(w-4*pad)/3; ctx.font='12px system-ui'; bars.forEach((b,i)=>{ const x=pad + i*(bw+pad); const ratio=b.v/total; const bh=Math.round((h-2*pad)*ratio); const y=h-pad-bh; ctx.fillStyle=b.c; ctx.fillRect(x,y,bw,bh); ctx.fillStyle='#111827'; ctx.fillText(`${Math.round(b.v/60)} min`, x+4, y-6); ctx.fillText(b.label, x+4, h-6); }); }
+  const notes =
+    document.getElementById(
+      "notes"
+    );
 
-  function init(){ try{
-    SESSION = pickSession(); if(!SESSION){ $('no-session').classList.remove('hidden'); return; }
-    $('result-summary-card').classList.remove('hidden');
-    CAN=$('r-chart'); CTX=CAN.getContext('2d'); DPR=window.devicePixelRatio||1; window.addEventListener('resize', ()=>{ resizeCanvas(); draw(); }); resizeCanvas();
-    renderSummary(); renderLaps(); renderZones(); setupButtons();
-    ['r-show-hr','r-show-watt','r-show-speed','r-show-rpe'].forEach(id=> $(id)?.addEventListener('change', draw));
-    draw();
-  }catch(e){ showErr(e); }
+  if (!notes) {
+    return;
   }
 
-  document.addEventListener('DOMContentLoaded', init);
-})();
+  const sessions =
+    getNS("sessions", []);
+
+  const index =
+    sessions.findIndex(
+      session => {
+        if (
+          SESSION._local_id &&
+          session._local_id
+        ) {
+          return (
+            session._local_id ===
+            SESSION._local_id
+          );
+        }
+
+        return (
+          session.id === SESSION.id
+        );
+      }
+    );
+
+  if (index < 0) {
+    alert(
+      "Fant ikke økten i lokal lagring."
+    );
+
+    return;
+  }
+
+  sessions[index] = {
+    ...sessions[index],
+    notes: notes.value || "",
+    _updated_at:
+      new Date().toISOString(),
+    _sync_status: "pending"
+  };
+
+  SESSION = sessions[index];
+
+  setNS("sessions", sessions);
+
+  alert("Merknaden er lagret.");
+}
+
+function wireButtons() {
+  const tcxButton =
+    document.getElementById(
+      "btn-download-tcx"
+    );
+
+  const jsonButton =
+    document.getElementById(
+      "btn-dump-json"
+    );
+
+  const notesButton =
+    document.getElementById(
+      "save-notes"
+    );
+
+  if (tcxButton) {
+    tcxButton.onclick = () => {
+      try {
+        if (!SESSION) {
+          throw new Error(
+            "Ingen økt er valgt."
+          );
+        }
+
+        const tcx =
+          buildTCX(SESSION);
+
+        downloadBlob(
+          safeFileName(
+            SESSION.name
+          ) + ".tcx",
+          tcx,
+          "application/vnd.garmin.tcx+xml;charset=utf-8"
+        );
+      } catch (error) {
+        console.error(
+          "[INTZ results] TCX-eksport feilet:",
+          error
+        );
+
+        alert(
+          "TCX-eksport feilet: " +
+          (
+            error?.message ||
+            String(error)
+          )
+        );
+      }
+    };
+  }
+
+  if (jsonButton) {
+    jsonButton.onclick = () => {
+      try {
+        if (!SESSION) {
+          throw new Error(
+            "Ingen økt er valgt."
+          );
+        }
+
+        downloadBlob(
+          safeFileName(
+            SESSION.name
+          ) + ".json",
+          JSON.stringify(
+            SESSION,
+            null,
+            2
+          ),
+          "application/json;charset=utf-8"
+        );
+      } catch (error) {
+        alert(
+          "JSON-eksport feilet: " +
+          (
+            error?.message ||
+            String(error)
+          )
+        );
+      }
+    };
+  }
+
+  if (notesButton) {
+    notesButton.onclick =
+      saveNotes;
+  }
+}
+
+function renderChart(session) {
+  const canvas =
+    document.getElementById(
+      "r-chart"
+    );
+
+  if (!canvas) {
+    return;
+  }
+
+  const rect =
+    canvas.getBoundingClientRect();
+
+  const ratio =
+    window.devicePixelRatio || 1;
+
+  canvas.width =
+    Math.max(
+      1,
+      Math.floor(
+        rect.width * ratio
+      )
+    );
+
+  canvas.height =
+    Math.max(
+      1,
+      Math.floor(
+        rect.height * ratio
+      )
+    );
+
+  const context =
+    canvas.getContext("2d");
+
+  context.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  const points =
+    Array.isArray(session.points)
+      ? session.points
+      : [];
+
+  const validPoints =
+    points.filter(point =>
+      Number.isFinite(
+        Number(point.hr)
+      ) &&
+      Number(point.hr) > 0
+    );
+
+  if (
+    validPoints.length < 2
+  ) {
+    context.fillStyle =
+      "#64748b";
+
+    context.font =
+      `${14 * ratio}px system-ui`;
+
+    context.fillText(
+      "Ikke nok pulsdata til graf.",
+      20 * ratio,
+      30 * ratio
+    );
+
+    return;
+  }
+
+  const values =
+    validPoints.map(point =>
+      Number(point.hr)
+    );
+
+  let minimum =
+    Math.min(...values) - 5;
+
+  let maximum =
+    Math.max(...values) + 5;
+
+  if (maximum <= minimum) {
+    maximum = minimum + 1;
+  }
+
+  const left = 48 * ratio;
+  const right = 16 * ratio;
+  const top = 18 * ratio;
+  const bottom = 24 * ratio;
+
+  const width =
+    canvas.width -
+    left -
+    right;
+
+  const height =
+    canvas.height -
+    top -
+    bottom;
+
+  const firstTime =
+    Number(validPoints[0].ts);
+
+  const lastTime =
+    Number(
+      validPoints[
+        validPoints.length - 1
+      ].ts
+    );
+
+  const duration =
+    Math.max(
+      1,
+      lastTime - firstTime
+    );
+
+  const xFor = point =>
+    left +
+    (
+      (
+        Number(point.ts) -
+        firstTime
+      ) / duration
+    ) *
+    width;
+
+  const yFor = point =>
+    top +
+    (
+      1 -
+      (
+        Number(point.hr) -
+        minimum
+      ) /
+      (
+        maximum -
+        minimum
+      )
+    ) *
+    height;
+
+  context.strokeStyle =
+    "#e2e8f0";
+
+  context.lineWidth = ratio;
+
+  context.strokeRect(
+    left,
+    top,
+    width,
+    height
+  );
+
+  context.beginPath();
+
+  validPoints.forEach(
+    (point, index) => {
+      const x = xFor(point);
+      const y = yFor(point);
+
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    }
+  );
+
+  context.strokeStyle =
+    "#ef4444";
+
+  context.lineWidth =
+    2 * ratio;
+
+  context.stroke();
+}
+
+function renderResults() {
+  SESSION = pickSession();
+
+  const noSession =
+    document.getElementById(
+      "no-session"
+    );
+
+  if (
+    !SESSION ||
+    !Array.isArray(
+      SESSION.points
+    ) ||
+    !SESSION.points.length
+  ) {
+    noSession?.classList.remove(
+      "hidden"
+    );
+
+    return;
+  }
+
+  noSession?.classList.add(
+    "hidden"
+  );
+
+  const notes =
+    document.getElementById(
+      "notes"
+    );
+
+  if (notes) {
+    notes.value =
+      SESSION.notes || "";
+  }
+
+  renderSummary(SESSION);
+  renderChart(SESSION);
+  wireButtons();
+}
+
+document.addEventListener(
+  "DOMContentLoaded",
+  renderResults
+);
+
+window.addEventListener(
+  "intz:viewchange",
+  event => {
+    if (
+      event.detail?.view ===
+      "results"
+    ) {
+      renderResults();
+    }
+  }
+);
+
+window.addEventListener(
+  "resize",
+  () => {
+    if (SESSION) {
+      renderChart(SESSION);
+    }
+  }
+);

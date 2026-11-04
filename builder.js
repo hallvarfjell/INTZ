@@ -151,7 +151,7 @@ function setNS(k, v){ localStorage.setItem(nsKey(k), JSON.stringify(v)); }
   el('b-update').onclick=()=>{ if(editingIndex==null){ alert('Ingen mal valgt for oppdatering.'); return; } const arr=getAll(); const compiled=compileToV2(); arr[editingIndex]={ ...arr[editingIndex], name:el('b-name').value||arr[editingIndex].name, desc: el('b-desc').value||arr[editingIndex].desc, warmupSec:compiled.warmupSec, cooldownSec:compiled.cooldownSec, series:compiled.series }; setAll(arr); alert('Oppdatert.'); renderList(); };
   el('b-clear').onclick=()=>{ pushState(); editingIndex=null; el('b-update').classList.add('hidden'); el('b-save').classList.remove('hidden'); el('b-name').value=''; el('b-desc').value=''; STEPS=[]; render(); };
 
-  function autorunIndex(i){ setNS('preselect', {type:'custom', index:i}); location.href='index.html'; }
+  function autorunIndex(i){ setNS('preselect', {type:'custom', index:i}); location.hash='dashboard'; }
   function rowDuration(w){ const s=w.series||[]; let total=Number(w.warmupSec||0)+Number(w.cooldownSec||0); for(const x of s){ total += Number(x.reps||0) * (Number(x.workSec||0) + Number(x.restSec||0)); total += Number(x.seriesRestSec||0); } return fmt(total); }
 
   function renderList(){ const arr=getAll(); if(!arr.length){ listEl.innerHTML='<p class="small">Ingen lagrede maler enda.</p>'; return;} listEl.innerHTML=''; const wrap=document.createElement('div'); wrap.style.display='grid'; wrap.style.gap='8px';

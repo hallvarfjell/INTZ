@@ -335,29 +335,229 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  }
  }catch(e){}
  }
- function finishSession(){
- try{
- const w=STATE.workout; if(!w) return;
- const nowIso=new Date().toISOString();
- if(!w.startedAt) w.startedAt = STATE.logger.startTs? new Date(STATE.logger.startTs).toISOString(): nowIso;
- if(!w.endedAt) w.endedAt = nowIso;
- if(STATE.logger.points.length<2){
- const t0=STATE.logger.startTs || Date.now();
- const t1=Date.now();
- if(STATE.logger.points.length===0) writeSample(t0);
- writeSample(t1);
- }
- const session={
- id:'s'+Date.now(), name:w.name || 'Økt',
- reps:(w.series||[]).reduce((a,s)=>a+(Number(s.reps)||0),0),
- startedAt:w.startedAt, endedAt:w.endedAt,
- lt1:STATE.LT1, lt2:STATE.LT2, massKg:STATE.massKg, rpeByRep:STATE.rpeByRep,
- points:STATE.logger.points
- };
- const arr=getNS('sessions',[]); arr.push(session); setNS('sessions', arr);
- window.location.assign('results.html#'+session.id);
- }catch(e){ console.error('finishSession failed', e); alert('Klarte ikke å lagre økt: '+e.message); }
- }
+function finishSession() {
+  /*
+   * All avslutning av en økt går gjennom denne funksjonen.
+   * Funksjonen må derfor:
+   *
+   * 1. hindre dobbeltlagring
+   * 2. stoppe intervallet
+   * 3. stoppe loggeren
+   * 4. markere økten som ferdig
+   * 5. lagre økten én gang
+   * 6. fjerne den aktive økten før navigasjon
+   */
+
+  const workout = STATE.workout;
+
+  if (!workout) {
+    return;
+  }
+
+  /*
+   * Dobbeltklikk, automatisk faseslutt eller et fortsatt
+   * aktivt interval skal ikke kunne lagre samme økt på nytt.
+   */
+  if (workout._finishing || workout._saved) {
+    return;
+  }
+
+  workout._finishing = true;
+
+  try {
+    /*
+     * Viktig: clearInterval må kjøres også når brukeren
+     * trykker Stopp og lagre uten å pause først.
+     */
+    stopTicker();
+    stopLogger();
+
+    workout.phase = "done";
+    workout.tLeft = 0;
+
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+
+    if (!workout.startedAt) {
+      workout.startedAt =
+        STATE.logger.startTs
+          ? new Date(
+              STATE.logger.startTs
+            ).toISOString()
+          : nowIso;
+    }
+
+    if (!workout.endedAt) {
+      workout.endedAt = nowIso;
+    }
+
+    /*
+     * Sørg for at økten har minst to datapunkter.
+     * Ikke legg til et nytt sluttpunkt dersom knappen eller
+     * fasehåndteringen allerede har skrevet ett.
+     */
+    if (STATE.logger.points.length === 0) {
+      const startTime =
+        STATE.logger.startTs || now;
+
+      writeSample(startTime);
+    }
+
+    if (STATE.logger.points.length === 1) {
+      writeSample(now);
+    }
+
+    const sessionId =
+      window.crypto &&
+      typeof window.crypto.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : (
+            "s" +
+            Date.now() +
+            "-" +
+            Math.random()
+              .toString(36)
+              .slice(2)
+          );
+
+    let session = {
+      id: sessionId,
+
+      _local_id: sessionId,
+      _schema_version: 1,
+      _updated_at: nowIso,
+      _deleted_at: null,
+      _sync_status: "pending",
+
+      name:
+        workout.name || "Økt",
+
+      reps:
+        (
+          workout.series || []
+        ).reduce(
+          (total, series) =>
+            total +
+            (
+              Number(series.reps) ||
+              0
+            ),
+          0
+        ),
+
+      startedAt:
+        workout.startedAt,
+
+      endedAt:
+        workout.endedAt,
+
+      lt1: STATE.LT1,
+      lt2: STATE.LT2,
+      massKg: STATE.massKg,
+
+      rpeByRep: {
+        ...STATE.rpeByRep
+      },
+
+      points:
+        STATE.logger.points.map(
+          point => ({
+            ...point
+          })
+        )
+    };
+
+    if (window.INTZCloud) {
+      session =
+        window.INTZCloud.touch(
+          session,
+          "session"
+        );
+    }
+
+    const sessions =
+      getNS("sessions", []);
+
+    sessions.push(session);
+
+    setNS(
+      "sessions",
+      sessions
+    );
+
+    workout._saved = true;
+
+    /*
+     * Fjern den avsluttede økten fra den aktive tilstanden.
+     * Dette hindrer navigasjonssperren og forhindrer at en
+     * ferdig økt tilsynelatende starter igjen på dashboardet.
+     */
+    STATE.workout = null;
+    STATE.logger.active = false;
+
+    /*
+     * Nullstill visningsdata som bare tilhører økten.
+     * Selve punktene må ikke tømmes før session er opprettet.
+     */
+    STATE.rpeByRep = {};
+    STATE.metrics.elevGainM = 0;
+    STATE.metrics.tss = 0;
+    STATE.totalSec = 0;
+
+    /*
+     * Synkronisering er best effort.
+     * Lokal lagring er allerede fullført dersom Supabase
+     * ikke er tilgjengelig.
+     */
+    try {
+      const cloudEnabled =
+        !!getNS(
+          "cloudEnabled",
+          false
+        );
+
+      if (
+        cloudEnabled &&
+        window.INTZCloud
+      ) {
+        window.INTZCloud
+          .syncUp()
+          .catch(error => {
+            console.warn(
+              "[INTZ] Automatisk synkronisering feilet:",
+              error
+            );
+          });
+      }
+    } catch (error) {
+      console.warn(
+        "[INTZ] Kunne ikke starte automatisk synkronisering:",
+        error
+      );
+    }
+
+    /*
+     * Naviger først etter at ticker og aktiv økt er ryddet.
+     */
+    location.hash =
+      "results:" + session.id;
+  } catch (error) {
+    workout._finishing = false;
+
+    console.error(
+      "finishSession failed",
+      error
+    );
+
+    alert(
+      "Klarte ikke å lagre økt: " +
+      (
+        error?.message ||
+        String(error)
+      )
+    );
+  }
+}
  function stepDurationLabel(w){
  if(!w) return '';
  if(w.phase==='warmup') return fmtMMSS(w.warmupSec);
@@ -707,16 +907,38 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  const lst = document.getElementById('st-last');
  if(!elp||!dst||!elv||!tss||!lst) return;
  let elapsed = 0, remaining = 0;
- if(STATE.workout){
- if(STATE.workout.startedAt && STATE.ticker){
- const now = Date.now();
- const start = new Date(STATE.workout.startedAt).getTime() || now;
- elapsed = Math.max(0, Math.round((now - start)/1000));
- } else {
- elapsed = 0;
- }
- remaining = computeRemainingSec(STATE.workout);
- }
+if (STATE.workout) {
+  /*
+   * Påløpt tid følger øktens faktiske starttid.
+   * Visningen skal ikke nullstilles fordi ticker-
+   * referansen mangler eller økten er pauset.
+   */
+  if (STATE.workout.startedAt) {
+    const now = Date.now();
+
+    const start =
+      new Date(
+        STATE.workout.startedAt
+      ).getTime();
+
+    elapsed =
+      Number.isFinite(start)
+        ? Math.max(
+            0,
+            Math.round(
+              (now - start) / 1000
+            )
+          )
+        : 0;
+  } else {
+    elapsed = 0;
+  }
+
+  remaining =
+    computeRemainingSec(
+      STATE.workout
+    );
+}
  elp.textContent = fmtMMSS(elapsed);
  rem.textContent = (remaining>0? fmtMMSS(remaining) : (STATE.workout? '00:00' : '--:--'));
  dst.textContent = (STATE.logger.dist/1000).toFixed(2)+ ' km';
@@ -737,12 +959,44 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  }
  function init(){
  try{
- for(const a of (document.getElementById('topbar')?.querySelectorAll('a')||[]))
- a.addEventListener('click', (e)=>{
- if(STATE.workout && STATE.ticker && STATE.workout.phase!=='done'){
- e.preventDefault(); alert('Avslutt økta før du navigerer bort fra hovedsida.');
- }
- });
+/*
+ * Navigasjonskontroll for SPA-ruteren.
+ *
+ * En økt regnes som aktiv fra den er startet til den er
+ * lagret eller forkastet. Dette gjelder også dersom økten
+ * er pauset.
+ */
+window.INTZWorkoutNavigation = {
+  isActive() {
+    return !!(
+      STATE.workout &&
+      STATE.workout.startedAt &&
+      STATE.workout.phase !== "done"
+    );
+  },
+
+  canNavigate(targetView) {
+    const active = this.isActive();
+
+    /*
+     * Navigasjon til dashboardet er alltid tillatt.
+     * Navigasjon bort fra dashboardet blokkeres mens en
+     * påbegynt økt finnes.
+     */
+    if (
+      active &&
+      targetView !== "dashboard"
+    ) {
+      alert(
+        "Økta pågår. Stopp og lagre eller forkast økta før du navigerer bort fra hovedsida."
+      );
+
+      return false;
+    }
+
+    return true;
+  }
+};
  window.addEventListener('beforeunload', (e)=>{
  if(STATE.workout && STATE.ticker && STATE.workout.phase!=='done'){
  e.preventDefault(); e.returnValue='Økta pågår. Avslutt før du lukker/navigerer bort.';

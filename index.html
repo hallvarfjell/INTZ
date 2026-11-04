@@ -1,36 +1,37 @@
 <!DOCTYPE html>
 <html lang="no">
 <head>
- <meta charset="UTF-8" />
- <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
- <meta name="theme-color" content="#f7fafc" />
- <title>INTZ – Hovedside</title>
- <link rel="manifest" href="manifest.json" />
- <link rel="stylesheet" href="style.css" />
- <!-- Phosphor Icons -->
- <script src="https://unpkg.com/phosphor-icons@1.4.2"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#f7fafc" />
+  <title>INTZ v10.1 – SPA + Supabase</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/phosphor-icons@1.4.2"></script>
 </head>
 <body>
- <header class="topbar" id="topbar">
- <div class="nav">
- <a href="index.html"><strong>INTZ</strong></a>
- <a href="index.html">Hovedside</a>
- <a href="builder.html">Øktbygger</a>
- <a href="log.html">Logg</a>
- <a href="settings.html">Innstillinger</a>
- <a href="help.html">Hjelp</a>
- </div>
- <!-- Enhetsknapper med tilkoblingsstatus -->
- <div class="devicectl">
- <button id="connect-hr" class="btn-device disconnected" title="Koble til puls">
- <i class="ph-heart"></i><span>Puls</span>
- </button>
- <button id="connect-treadmill" class="btn-device disconnected" title="Koble til mølle">
- <i class="ph-trend-up"></i><span>Mølle</span>
- </button>
- </div>
- </header>
- <main class="layout">
+
+<header class="topbar" id="topbar">
+  <div class="nav">
+    <a href="#dashboard" data-nav="dashboard"><strong>INTZ</strong></a>
+    <a href="#dashboard" data-nav="dashboard">Hovedside</a>
+    <a href="#builder" data-nav="builder">Øktbygger</a>
+    <a href="#log" data-nav="log">Logg</a>
+    <a href="#settings" data-nav="settings">Innstillinger</a>
+    <a href="#help" data-nav="help">Hjelp</a>
+  </div>
+  <div class="devicectl">
+    <button id="connect-hr" class="btn-device disconnected" title="Koble til puls">
+      <i class="ph-heart"></i><span>Puls</span>
+    </button>
+    <button id="connect-treadmill" class="btn-device disconnected" title="Koble til mølle">
+      <i class="ph-trend-up"></i><span>Mølle</span>
+    </button>
+  </div>
+</header>
+
+<div id="spa-root">
+  <section data-view="dashboard"><div class="layout">
  <section class="leftcol">
  <!-- Dashboard / live-metrics -->
  <div class="card metrics" id="dashboard">
@@ -141,8 +142,8 @@
  </div>
  <p class="small" style="margin:0 8px 12px 8px">Ghost = tidsjustert snitt av valgte økter (HR/Watt) lagt oppå live-kurven.</p>
  </section>
- </main>
- <!-- Ghost-meny -->
+ </div>
+<!-- Ghost-meny -->
  <div id="ghost-menu" class="menu hidden" style="position:fixed;top:72px;right:16px;min-width:340px;z-index:50">
  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid #f1f5f9">
  <strong>Velg ghost-økter</strong>
@@ -173,6 +174,391 @@
  </div>
  </div>
  </div>
- <script src="main.js"></script>
+ </section>
+  <section data-view="builder" class="hidden"><div class="layout">
+<section class="leftcol">
+<div class="card">
+<h3>Øktinformasjon</h3>
+<div class="row" style="display:grid;gap:8px">
+<label>Øktnavn
+          <input id="b-name" placeholder="f.eks. Terskel – 4×10 min" type="text"/>
+</label>
+<label>Beskrivelse (fritekst)
+          <textarea id="b-desc" placeholder="Hva er hensikten med økta?" rows="3"></textarea>
+</label>
+<div class="small">Total varighet: <strong id="b-total">0:00</strong></div>
+</div>
+</div>
+<div class="card">
+<h3>Øktinnhold</h3>
+<div class="toolbar" style="display:flex;gap:6px;flex-wrap:wrap">
+<button class="secondary" id="add-warmup"><i class="ph-thermometer-simple"></i> Oppvarming</button>
+<button class="secondary" id="add-series"><i class="ph-rows"></i> Serie</button>
+<button class="secondary" id="add-single"><i class="ph-timer"></i> Enkelt‑drag</button>
+<button class="secondary" id="add-pause"><i class="ph-coffee"></i> Pause</button>
+<button class="secondary" id="add-seriepause"><i class="ph-arrows-in-line-horizontal"></i> Seriepause</button>
+<button class="secondary" id="add-cooldown"><i class="ph-thermometer-cold"></i> Nedjogg</button>
+<button class="secondary" id="gen-fartlek"><i class="ph-wave-sine"></i> Fartlek</button>
+<button class="secondary" id="gen-pyramid"><i class="ph-triangle"></i> Pyramide</button>
+<button class="ghost" id="undo" title="Angre (opptil 20)"><i class="ph-arrow-arc-left"></i> Angre</button>
+<button class="ghost" id="redo" title="Gjør om"><i class="ph-arrow-arc-right"></i> Gjør om</button>
+</div>
+<div class="steps" id="steps" style="display:grid;gap:8px"></div>
+<p class="small">Fartlek/pyramide genereres som en <em>sammendragsrad</em> med segmenter under. Sammendragsraden har <strong>Vis/Skjul</strong> og <strong>Dupliser</strong>.</p>
+</div>
+<div class="card">
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="primary" id="b-save"><i class="ph-floppy-disk"></i> Lagre som ny</button>
+<button class="secondary hidden" id="b-update"><i class="ph-floppy-disk"></i> Oppdater mal</button>
+<button class="ghost" id="b-clear"><i class="ph-trash"></i> Nullstill</button>
+</div>
+</div>
+</section>
+<section class="rightcol">
+<div class="card">
+<h3>Lagrede maler</h3>
+<div id="b-list"></div>
+</div>
+</section>
+</div>
+<!-- Generator Modal -->
+<div aria-labelledby="gen-title" aria-modal="true" class="modal" id="gen-modal" role="dialog">
+<div class="modalpanel">
+<h3 id="gen-title">Generator</h3>
+<div class="modalgrid">
+<label>Segmenter (sek, kommadelt)
+        <textarea id="gen-segments" placeholder="f.eks. 60,90,60,120" rows="5"></textarea>
+</label>
+<div>
+<label>Hurtig: bygg pyramide fra stigende sekvenser (kommaseparert)
+          <input id="gen-asc" placeholder="f.eks. 60,120,180" type="text"/>
+</label>
+<label><input checked="" id="gen-mirror" type="checkbox"/> Speil stigende side (pyramide)</label>
+<label>Pause mellom segmenter (s)
+          <input id="gen-pause" min="0" step="5" type="number" value="0"/>
+</label>
+<label><input checked="" id="gen-group" type="checkbox"/> Start som sammendragsgruppe</label>
+<label><input id="gen-absorb" type="checkbox"/> Slå sammen til <em>Serie</em> når mulig</label>
+</div>
+</div>
+<div class="small" id="gen-preview">Forhåndsvisning: 0 segmenter, 0:00</div>
+<div class="modalactions">
+<button class="ghost" id="gen-cancel">Avbryt</button>
+<button class="primary" id="gen-apply">Bruk</button>
+</div>
+</div>
+</div>
+</section>
+  <section data-view="log" class="hidden"><div class="layout">
+<section class="leftcol">
+<div class="card">
+<h3>Økter</h3>
+<div id="log-list"></div>
+</div>
+</section>
+</div>
+</section>
+  <section data-view="results" class="hidden"><div class="layout">
+<section class="leftcol">
+<div class="card" id="result-summary-card">
+<h3>Oppsummering</h3>
+<div id="summary"></div>
+<div class="row" style="margin-top:8px; gap:8px; flex-wrap:wrap">
+<button class="primary" id="btn-download-tcx"><i class="ph-download-simple ph-fw"></i> Last ned TCX</button>
+<button class="secondary" id="btn-dump-json"><i class="ph-code ph-fw"></i> Eksporter JSON</button>
+</div>
+</div>
+<div class="card">
+<h3>Vis metrikker</h3>
+<label><input checked="" id="r-show-hr" type="checkbox"/> Puls (rød)</label>
+<label><input checked="" id="r-show-watt" type="checkbox"/> Watt (grønn)</label>
+<label><input id="r-show-speed" type="checkbox"/> Fart (blå)</label>
+<label><input checked="" id="r-show-rpe" type="checkbox"/> RPE (gul)</label>
+</div>
+<div class="card">
+<h3>Merknader</h3>
+<textarea id="notes" rows="6" style="width:100%;"></textarea>
+<div class="row" style="margin-top:8px"><button class="secondary" id="save-notes"><i class="ph-floppy-disk ph-fw"></i> Lagre</button></div>
+</div>
+<div class="card" id="zones-card">
+<h3>Tid i pulssoner (LT‑basert)</h3>
+<canvas aria-label="Tid i soner" height="220" id="zones" role="img" width="420"></canvas>
+<small class="muted">Under LT1, mellom LT1–LT2, over LT2</small>
+</div>
+<div class="card warning hidden" id="no-session">
+<h3>Ingen økt å vise</h3>
+<p>Fant ingen lagret økt. Gå tilbake og fullfør en økt, eller sjekk at nettleserens lagring ikke er blokkert.</p>
+<a class="secondary" href="index.html"><i class="ph-arrow-left ph-fw"></i> Til hovedskjerm</a>
+</div>
+<div class="card warning hidden" id="err-card">
+<h3>Kjøretidsfeil</h3>
+<pre id="err-log"></pre>
+</div>
+</section>
+<section class="rightcol">
+<div class="card graphcard">
+<div class="graphhdr"><strong>Hele økta</strong> <span class="small">(HR=rød, Watt=høyre grønn, Fart=topp blå, RPE=høyre‑innvendig gul)</span></div>
+<div class="graphwrap">
+<canvas aria-label="Graf" id="r-chart" role="img"></canvas>
+</div>
+</div>
+<div class="card">
+<h3>Drag (snittverdier)</h3>
+<div style="overflow:auto">
+<table class="table" id="laps"></table>
+</div>
+</div>
+</section>
+</div>
+</section>
+  <section data-view="settings" class="hidden"><div class="layout">
+<section class="leftcol">
+<div class="card">
+<h3>Brukerprofiler</h3>
+<div id="users-panel"></div>
+</div>
+<div class="card">
+<h3>Brukerinnstillinger</h3>
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+<label>Kroppsvekt (kg)
+          <input id="s-mass" max="200" min="30" step="0.5" type="number"/>
+</label>
+<label>LT1 (bpm)
+          <input id="s-lt1" max="220" min="80" step="1" type="number"/>
+</label>
+<label>LT2 (bpm)
+          <input id="s-lt2" max="220" min="80" step="1" type="number"/>
+</label>
+</div>
+</div>
+<div class="card">
+<h3>Powermodell</h3>
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+<label>Kalibrering K
+          <input id="s-cal-k" step="0.01" type="number"/>
+</label>
+<label>C_run (J/kg/m)
+          <input id="s-c-run" step="0.05" type="number"/>
+</label>
+</div>
+<p class="small">Ytre arbeid: P = m·g·v·grade + C_run·m·v → deretter ×K.</p>
+</div>
+<div class="card">
+<h3>Graf</h3>
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+<label><input id="s-default-hr" type="checkbox"/> Vis HR som standard</label>
+<label><input id="s-default-watt" type="checkbox"/> Vis Watt som standard</label>
+<label><input id="s-default-speed" type="checkbox"/> Vis Fart som standard</label>
+<label><input id="s-default-rpe" type="checkbox"/> Vis RPE som standard</label>
+</div>
+</div>
+<div class="card">
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="primary" id="s-save">Lagre innstillinger</button>
+</div>
+</div>
+<div class="card">
+<h3>Sikkerhetskopi &amp; flytting</h3>
+<p class="small">
+    Eksporter <em>alt</em> (brukere, maler, økter, innstillinger) til én JSON-fil,
+    eller importer en tidligere sikkerhetskopi. Import <strong>erstatter hele</strong> lokallagringen.
+  </p>
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="secondary" id="backup-export">Eksporter alt</button>
+<button class="secondary" id="backup-import">Importer alt</button>
+<input accept="application/json" id="backup-file" style="display:none" type="file"/>
+</div>
+</div>
+<div class="card">
+<details>
+<summary style="cursor:pointer"><strong>🔢 RPE 1–10 forklart</strong> (trykk for å utvide)</summary>
+<div class="small" style="white-space:pre-wrap;margin-top:8px">RPE 1 – Ingen anstrengelse
+Føles som fullstendig hvile.
+Sitter eller ligger stille.
+Puls omtrent som i hvile.
+
+RPE 2 – Svært lett
+Veldig rolig bevegelse.
+Kan snakke helt uanstrengt i lange setninger.
+Typisk: veldig rolig spasertur.
+
+RPE 3 – Lett
+Behagelig og kontrollert.
+Pusten er litt dypere enn i hvile.
+Du kan føre en normal samtale uten problemer.
+Typisk: rolig jogg / restitusjonsøkt.
+
+RPE 4 – Moderat
+Du merker at du jobber.
+Pusten er tydelig raskere.
+Kan snakke i hele setninger, men vil helst ikke prate konstant.
+Typisk: komfortabel langkjøring.
+
+RPE 5 – Middels / kontrollert hard
+Nå begynner det å bli krevende.
+Pusten er tung, men rytmisk.
+Du kan snakke i korte setninger.
+Ofte rundt terskelfølelse for nybegynnere.
+
+RPE 6 – Moderat hard
+Du jobber tydelig hardt.
+Pusten er markant anstrengt.
+Du kan si noen få ord av gangen.
+Ofte rundt aerob terskel for godt trente.
+
+RPE 7 – Hard
+Krevende, men kontrollert.
+Du må fokusere for å holde tempoet.
+Vanskelig å snakke mer enn enkeltord.
+Typisk lengre intervaller (3–8 min drag).
+
+RPE 8 – Svært hard
+Nær maksimalt for lengre drag.
+Intens pust, brennende følelse i muskulaturen.
+Kan ikke føre samtale.
+Typisk korte intervaller (1–3 min).
+
+RPE 9 – Nesten maksimal
+Du presser deg.
+Føles svært ubehagelig.
+Kan bare holde intensiteten kort tid.
+Typisk sprintdrag på 20–60 sekunder.
+
+RPE 10 – Maksimal innsats
+Absolutt maks.
+Du kan ikke holde det mer enn noen sekunder.
+Full sprint / maksimal styrkeinnsats.
+Ingen kapasitet igjen.</div>
+</details>
+</div>
+<div class="card">
+<h3>Skala (Y-akse)</h3>
+<div class="row" style="display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:8px">
+<label><input id="s-hr-lock" type="checkbox"/> Lås HR-skala</label>
+<div style="display:flex;gap:6px;align-items:center"><span class="small">HR min/max</span> <input id="s-hr-min" step="1" style="width:90px" type="number"/> <input id="s-hr-max" step="1" style="width:90px" type="number"/></div>
+<label><input id="s-w-lock" type="checkbox"/> Lås Watt-skala</label>
+<div style="display:flex;gap:6px;align-items:center"><span class="small">W min/max</span> <input id="s-w-min" step="1" style="width:90px" type="number"/> <input id="s-w-max" step="1" style="width:90px" type="number"/></div>
+<label><input id="s-s-lock" type="checkbox"/> Lås Fart-skala</label>
+<div style="display:flex;gap:6px;align-items:center"><span class="small">Fart min/max</span> <input id="s-s-min" step="0.1" style="width:90px" type="number"/> <input id="s-s-max" step="0.1" style="width:90px" type="number"/></div>
+<label><input id="s-r-lock" type="checkbox"/> Lås RPE-skala</label>
+<div style="display:flex;gap:6px;align-items:center"><span class="small">RPE min/max</span> <input id="s-r-min" step="0.5" style="width:90px" type="number"/> <input id="s-r-max" step="0.5" style="width:90px" type="number"/></div>
+</div>
+</div>
+</section>
+</div>
+
+<div class="card">
+  <h3>Sky (Supabase)</h3>
+  <p class="small">Offline-first: data lagres lokalt først. Bruk knappene under for å synke mot Supabase.</p>
+  <label><input type="checkbox" id="cloud-enabled" /> Aktiver sky-synk</label>
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+    <button class="secondary" id="cloud-sync-up"><i class="ph-cloud-arrow-up ph-fw"></i> Synk opp</button>
+    <button class="secondary" id="cloud-sync-down"><i class="ph-cloud-arrow-down ph-fw"></i> Synk ned</button>
+  </div>
+  <div class="small" id="cloud-status" style="margin-top:8px">–</div>
+</div>
+</section>
+  <section data-view="help" class="hidden"><div class="layout">
+<section class="leftcol">
+<div class="card">
+<details>
+<summary style="cursor:pointer"><strong>Om TSS i INTZ</strong> (trykk for å utvide)</summary>
+<div class="small" style="white-space:pre-wrap;margin-top:8px">
+I denne versjonen beregnes TSS direkte fra puls, slik at du kan få en robust belastningsmåling uten å sette FTP. Formelen er:
+
+TSS = 100 · ∫ (HR/LTHR)^2 · dt / 3600
+
+Det betyr at én time på LTHR ≈ 100 TSS. Over LTHR øker belastningen kvadratisk, under LTHR synker den.
+
+For å få korrekte TSS-tall må du stille inn:
+• LT2 (LTHR): Gå til Innstillinger → Brukerinnstillinger og sett LT2 (bpm) til ditt omtrentlige laktatterskel-nivå for puls (LTHR). 
+• MassKg, K og C_run påvirker ikke TSS i denne HR-baserte modellen, men brukes til estimerte watt.
+
+Videre arbeid (valgfritt i kommende versjoner):
+• rTSS (tempo-basert) med Normalized Graded Pace og terrengkorreksjon.
+• power-TSS (krever FTP) dersom tredemøllen/footpod gir pålitelig effekt.
+• Bannister TRIMP som alternativ for mer klassisk pulsbasert belastning.
+          </div>
+</details>
+</div>
+<div class="card">
+<details>
+<summary style="cursor:pointer"><strong>RPE 1–10 forklart</strong> (trykk for å utvide)</summary>
+<div class="small" style="white-space:pre-wrap;margin-top:8px">RPE 1 – Ingen anstrengelse
+Føles som fullstendig hvile.
+Sitter eller ligger stille.
+Puls omtrent som i hvile.
+RPE 2 – Svært lett
+Veldig rolig bevegelse.
+Kan snakke helt uanstrengt i lange setninger.
+Typisk: veldig rolig spasertur.
+RPE 3 – Lett
+Behagelig og kontrollert.
+Pusten er litt dypere enn i hvile.
+Du kan føre en normal samtale uten problemer.
+Typisk: rolig jogg / restitusjonsøkt.
+RPE 4 – Moderat
+Du merker at du jobber.
+Pusten er tydelig raskere.
+Kan snakke i hele setninger, men vil helst ikke prate konstant.
+Typisk: komfortabel langkjøring.
+RPE 5 – Middels / kontrollert hard
+Nå begynner det å bli krevende.
+Pusten er tung, men rytmisk.
+Du kan snakke i korte setninger.
+Ofte rundt terskelfølelse for nybegynnere.
+RPE 6 – Moderat hard
+Du jobber tydelig hardt.
+Pusten er markant anstrengt.
+Du kan si noen få ord av gangen.
+Ofte rundt aerob terskel for godt trente.
+RPE 7 – Hard
+Krevende, men kontrollert.
+Du må fokusere for å holde tempoet.
+Vanskelig å snakke mer enn enkeltord.
+Typisk lengre intervaller (3–8 min drag).
+RPE 8 – Svært hard
+Nær maksimalt for lengre drag.
+Intens pust, brennende følelse i muskulaturen.
+Kan ikke føre samtale.
+Typisk korte intervaller (1–3 min).
+RPE 9 – Nesten maksimal
+Du presser deg.
+Føles svært ubehagelig.
+Kan bare holde intensiteten kort tid.
+Typisk sprintdrag på 20–60 sekunder.
+RPE 10 – Maksimal innsats
+Absolutt maks.
+Du kan ikke holde det mer enn noen sekunder.
+Full sprint / maksimal styrkeinnsats.
+Ingen kapasitet igjen.
+          </div>
+</details>
+</div>
+<!-- Flere informasjonskort kan legges til her som <div class="card"><details>...</details></div> -->
+</section>
+</div>
+</section>
+</div>
+
+<script>
+  // PWA SW registration
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./service-worker.js').catch(function(){});
+    });
+  }
+</script>
+
+<script type="module" src="./spa-router.js"></script>
+<script type="module" src="./supabase-client.js"></script>
+<script type="module" src="./cloud-sync.js"></script>
+<script type="module" src="./settings-core.js"></script>
+<script type="module" src="./settings-view.js"></script>
+<script type="module" src="./log-view.js"></script>
+<script type="module" src="./main.js"></script>
+<script type="module" src="./builder.js"></script>
+<script type="module" src="./results.js"></script>
+
 </body>
 </html>
