@@ -1,10 +1,5 @@
 // settings-view.js
-// INTZ v10.1
-//
-// Supabase-konfigurasjon uten separat innlogging.
-// Inneholder også:
-// - automatisk synkstatus
-// - fjerning av duplisert RPE-forklaring fra Innstillinger
+// INTZ v10.1 – Supabase-konfigurasjon uten separat innlogging.
 
 function activeUser() {
   return (
@@ -20,13 +15,13 @@ function nsKey(key) {
 
 function getNS(key, fallback) {
   try {
-    const value =
+    const current =
       localStorage.getItem(
         nsKey(key)
       );
 
-    if (value != null) {
-      return JSON.parse(value);
+    if (current != null) {
+      return JSON.parse(current);
     }
 
     const legacy =
@@ -49,36 +44,6 @@ function setNS(key, value) {
 
 let cloudWired = false;
 
-function removeSettingsRpeExplanation() {
-  const settingsSection =
-    document.querySelector(
-      'section[data-view="settings"]'
-    );
-
-  if (!settingsSection) {
-    return;
-  }
-
-  const summaries =
-    settingsSection.querySelectorAll(
-      "details > summary"
-    );
-
-  for (const summary of summaries) {
-    if (
-      summary.textContent
-        .toLowerCase()
-        .includes("rpe 1–10 forklart") ||
-      summary.textContent
-        .toLowerCase()
-        .includes("rpe 1-10 forklart")
-    ) {
-      summary.closest(".card")
-        ?.remove();
-    }
-  }
-}
-
 function generateSyncSecret() {
   if (
     window.crypto &&
@@ -95,27 +60,34 @@ function generateSyncSecret() {
   return (
     Date.now().toString(36) +
     "-" +
-    Math.random().toString(36).slice(2) +
+    Math.random()
+      .toString(36)
+      .slice(2) +
     "-" +
-    Math.random().toString(36).slice(2)
+    Math.random()
+      .toString(36)
+      .slice(2)
   );
 }
 
 function createCloudIdentityUi() {
-  const status =
+  const cloudStatus =
     document.getElementById(
       "cloud-status"
     );
 
-  if (!status) {
+  if (!cloudStatus) {
     return;
   }
 
   const card =
-    status.closest(".card");
+    cloudStatus.closest(".card");
+
+  if (!card) {
+    return;
+  }
 
   if (
-    !card ||
     document.getElementById(
       "cloud-identity"
     )
@@ -189,10 +161,10 @@ function createCloudIdentityUi() {
     </div>
 
     <p class="small">
-      Automatisk synk sender lokale endringer til skyen
-      og henter øktmaler og aktivitetsoversikt.
-      Komplette historiske aktiviteter hentes først når
-      aktiviteten åpnes eller velges som Ghost.
+      Bruk samme aktive profil og samme
+      synknøkkel på enheter som skal dele
+      maler, treningsøkter og Ghost-data.
+      Oppbevar synknøkkelen privat.
     </p>
   `;
 
@@ -201,11 +173,11 @@ function createCloudIdentityUi() {
       "cloud-enabled"
     );
 
-  const label =
+  const checkboxLabel =
     checkbox?.closest("label");
 
-  if (label) {
-    label.insertAdjacentElement(
+  if (checkboxLabel) {
+    checkboxLabel.insertAdjacentElement(
       "beforebegin",
       container
     );
@@ -216,19 +188,19 @@ function createCloudIdentityUi() {
 
 function formatUploadResult(result) {
   return [
-    `Maler opp: ${
+    `Maler lastet opp: ${
       result.workouts_uploaded || 0
     }`,
 
-    `Maler slettet: ${
+    `Slettede maler: ${
       result.workouts_deleted || 0
     }`,
 
-    `Økter opp: ${
+    `Økter lastet opp: ${
       result.sessions_uploaded || 0
     }`,
 
-    `Økter slettet: ${
+    `Slettede økter: ${
       result.sessions_deleted || 0
     }`
   ].join(" · ");
@@ -236,70 +208,33 @@ function formatUploadResult(result) {
 
 function formatDownloadResult(result) {
   return [
-    `Maler ned: ${
+    `Nye maler: ${
       result.workouts_downloaded || 0
     }`,
 
-    `Maler oppdatert: ${
+    `Oppdaterte maler: ${
       result.workouts_replaced || 0
     }`,
 
-    `Økter ned: ${
+    `Slettede maler: ${
+      result.workouts_deleted || 0
+    }`,
+
+    `Nye økter: ${
       result.sessions_downloaded || 0
     }`,
 
-    `Økter oppdatert: ${
+    `Oppdaterte økter: ${
       result.sessions_replaced || 0
+    }`,
+
+    `Slettede økter: ${
+      result.sessions_deleted || 0
     }`
   ].join(" · ");
 }
 
-function formatStatus(detail) {
-  if (!detail) {
-    return "–";
-  }
-
-  if (detail.state === "syncing") {
-    return "↻ Synkroniserer...";
-  }
-
-  if (detail.state === "synced") {
-    const time =
-      detail.at
-        ? new Date(
-            detail.at
-          ).toLocaleTimeString()
-        : "";
-
-    return (
-      "✓ Synkronisert" +
-      (
-        time
-          ? " " + time
-          : ""
-      )
-    );
-  }
-
-  if (detail.state === "offline") {
-    return "○ Frakoblet. Endringer lagres lokalt.";
-  }
-
-  if (detail.state === "error") {
-    return (
-      "! Synkfeil: " +
-      (
-        detail.message ||
-        "Ukjent feil"
-      )
-    );
-  }
-
-  return detail.message || "–";
-}
-
 function wireCloud() {
-  removeSettingsRpeExplanation();
   createCloudIdentityUi();
 
   const checkbox =
@@ -322,7 +257,7 @@ function wireCloud() {
       "cloud-status"
     );
 
-  const userDisplay =
+  const userKeyDisplay =
     document.getElementById(
       "cloud-user-key"
     );
@@ -332,7 +267,7 @@ function wireCloud() {
       "cloud-sync-secret"
     );
 
-  const saveButton =
+  const saveSecretButton =
     document.getElementById(
       "cloud-save-secret"
     );
@@ -362,8 +297,8 @@ function wireCloud() {
       .trim()
       .toLowerCase();
 
-  if (userDisplay) {
-    userDisplay.textContent =
+  if (userKeyDisplay) {
+    userKeyDisplay.textContent =
       userKey;
   }
 
@@ -378,21 +313,6 @@ function wireCloud() {
       "cloudEnabled",
       false
     );
-
-  const previousStatus =
-    getNS(
-      "cloudSyncStatus",
-      null
-    );
-
-  status.textContent =
-    previousStatus
-      ? formatStatus(previousStatus)
-      : (
-          checkbox.checked
-            ? "Automatisk synk er aktivert."
-            : "Sky-synk er deaktivert."
-        );
 
   if (cloudWired) {
     return;
@@ -424,21 +344,15 @@ function wireCloud() {
     return value;
   }
 
-  saveButton?.addEventListener(
+  saveSecretButton?.addEventListener(
     "click",
     () => {
       try {
         saveSecret();
 
         setStatus(
-          "Synknøkkelen er lagret."
+          "Synknøkkelen er lagret lokalt for aktiv profil."
         );
-
-        window.INTZAutoSync
-          ?.requestSync(
-            "secret-saved",
-            true
-          );
       } catch (error) {
         setStatus(
           error?.message ||
@@ -451,19 +365,19 @@ function wireCloud() {
   generateButton?.addEventListener(
     "click",
     () => {
-      const value =
+      const generated =
         generateSyncSecret();
 
       secretInput.value =
-        value;
+        generated;
 
       setNS(
         "cloudSyncSecret",
-        value
+        generated
       );
 
       setStatus(
-        "Ny synknøkkel er generert og lagret."
+        "En ny synknøkkel er generert og lagret. Kopier nøkkelen til et sikkert sted."
       );
     }
   );
@@ -508,14 +422,8 @@ function wireCloud() {
           );
 
           setStatus(
-            "Automatisk synk er aktivert."
+            "Sky-synk er aktivert."
           );
-
-          window.INTZAutoSync
-            ?.requestSync(
-              "cloud-enabled",
-              true
-            );
         } catch (error) {
           checkbox.checked = false;
 
@@ -546,13 +454,19 @@ function wireCloud() {
     "click",
     async () => {
       try {
+        if (!checkbox.checked) {
+          throw new Error(
+            "Aktiver sky-synk først."
+          );
+        }
+
         saveSecret();
 
         upButton.disabled = true;
         downButton.disabled = true;
 
         setStatus(
-          "Synkroniserer lokale endringer..."
+          "Synkroniserer lokale endringer til Supabase..."
         );
 
         const result =
@@ -564,6 +478,8 @@ function wireCloud() {
           formatUploadResult(result)
         );
       } catch (error) {
+        console.error(error);
+
         setStatus(
           "Synk opp feilet: " +
           (
@@ -582,13 +498,19 @@ function wireCloud() {
     "click",
     async () => {
       try {
+        if (!checkbox.checked) {
+          throw new Error(
+            "Aktiver sky-synk først."
+          );
+        }
+
         saveSecret();
 
         upButton.disabled = true;
         downButton.disabled = true;
 
         setStatus(
-          "Henter full historikk. Dette kan bruke mye lokal lagring..."
+          "Henter og slår sammen data fra Supabase..."
         );
 
         const result =
@@ -596,10 +518,12 @@ function wireCloud() {
             .syncDown();
 
         setStatus(
-          "Full synk ned fullført. " +
+          "Synk ned fullført. " +
           formatDownloadResult(result)
         );
       } catch (error) {
+        console.error(error);
+
         setStatus(
           "Synk ned feilet: " +
           (
@@ -613,24 +537,13 @@ function wireCloud() {
       }
     }
   );
+
+  setStatus(
+    checkbox.checked
+      ? "Sky-synk er aktivert."
+      : "Sky-synk er deaktivert."
+  );
 }
-
-window.addEventListener(
-  "intz:sync-status",
-  event => {
-    const status =
-      document.getElementById(
-        "cloud-status"
-      );
-
-    if (status) {
-      status.textContent =
-        formatStatus(
-          event.detail
-        );
-    }
-  }
-);
 
 window.addEventListener(
   "intz:viewchange",

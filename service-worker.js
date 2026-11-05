@@ -1,9 +1,9 @@
 // service-worker.js
-// INTZ v10.1
-// Automatisk synk og selektiv historikk.
+// INTZ v10.1 – SPA-cache
+// Oppdatert for dashboard/øktbygger FIX.
 
 const CACHE =
-  "intervall-cache-v101-auto-sync-history-v1";
+  "intervall-cache-v101-dashboard-no-reset-v1";
 
 const APP_ASSETS = [
   "./",
@@ -13,8 +13,6 @@ const APP_ASSETS = [
   "./spa-router.js",
   "./supabase-client.js",
   "./cloud-sync.js",
-  "./auto-sync.js",
-  "./history-loader.js",
   "./settings-core.js",
   "./settings-view.js",
   "./log-view.js",
@@ -32,7 +30,9 @@ self.addEventListener(
       caches
         .open(CACHE)
         .then(cache =>
-          cache.addAll(APP_ASSETS)
+          cache.addAll(
+            APP_ASSETS
+          )
         )
     );
   }
@@ -54,7 +54,9 @@ self.addEventListener(
             )
             .map(
               name =>
-                caches.delete(name)
+                caches.delete(
+                  name
+                )
             )
         );
 
@@ -70,7 +72,9 @@ self.addEventListener(
     const request =
       event.request;
 
-    if (request.method !== "GET") {
+    if (
+      request.method !== "GET"
+    ) {
       return;
     }
 
