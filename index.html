@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#f7fafc" />
-  <title>INTZ v11.1 – Supabase + TCX</title>
+  <title>INTZ v11.2 – Supabase + TCX</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://unpkg.com/phosphor-icons@1.4.2"></script>
@@ -253,7 +253,7 @@
 <section class="leftcol">
 <div class="card">
 <h3>Økter</h3>
-<div class="row" style="margin-bottom:12px"><button class="secondary" id="tcx-import"><i class="ph-upload-simple"></i> Importer TCX</button><input id="tcx-file" type="file" accept=".tcx,.txt,application/xml,text/xml" hidden><span class="small" id="tcx-import-status"></span></div><div id="log-list"></div>
+<div id="log-list"></div>
 </div>
 </section>
 </div>
@@ -551,8 +551,6 @@ Ingen kapasitet igjen.
 </script>
 
 <script type="module" src="./spa-router.js"></script>
-<script src="./session-store.js"></script>
-<script src="./tcx-io.js"></script>
 <script type="module" src="./supabase-client.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
 <script type="module" src="./settings-core.js"></script>
