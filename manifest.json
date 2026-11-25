@@ -1,6 +1,6 @@
 {
-  "name": "Intervall PWA",
-  "short_name": "Intervall",
+  "name": "INTZ v11.1",
+  "short_name": "INTZ 11.1",
   "start_url": "./index.html#dashboard",
   "display": "standalone",
   "background_color": "#f7fafc",

@@ -3,7 +3,7 @@
 // Oppdatert for dashboard/øktbygger FIX.
 
 const CACHE =
-  "intervall-cache-v110-supabase-tcx-v1";
+  "intervall-cache-v111-sync-results-v1";
 
 const APP_ASSETS = [
   "./",
