@@ -3,7 +3,7 @@
 // Oppdatert for dashboard/øktbygger FIX.
 
 const CACHE =
-  "intervall-cache-v101-dashboard-no-reset-v1";
+  "intervall-cache-v110-supabase-tcx-v1";
 
 const APP_ASSETS = [
   "./",
@@ -12,6 +12,8 @@ const APP_ASSETS = [
   "./manifest.json",
   "./spa-router.js",
   "./supabase-client.js",
+    "./session-store.js",
+    "./tcx-io.js",
   "./cloud-sync.js",
   "./settings-core.js",
   "./settings-view.js",

@@ -253,7 +253,7 @@
 <section class="leftcol">
 <div class="card">
 <h3>Økter</h3>
-<div id="log-list"></div>
+<div class="row" style="margin-bottom:12px"><button class="secondary" id="tcx-import"><i class="ph-upload-simple"></i> Importer TCX</button><input id="tcx-file" type="file" accept=".tcx,.txt,application/xml,text/xml" hidden><span class="small" id="tcx-import-status"></span></div><div id="log-list"></div>
 </div>
 </section>
 </div>
@@ -551,6 +551,8 @@ Ingen kapasitet igjen.
 </script>
 
 <script type="module" src="./spa-router.js"></script>
+<script src="./session-store.js"></script>
+<script src="./tcx-io.js"></script>
 <script type="module" src="./supabase-client.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
 <script type="module" src="./settings-core.js"></script>

@@ -71,7 +71,7 @@ function visibleSessions() {
   );
 }
 
-function pickSession() {
+async function pickSession() {
   const route = currentRoute();
 
   const id =
@@ -93,19 +93,10 @@ function pickSession() {
     return null;
   }
 
-  if (id) {
-    return (
-      sessions.find(
-        session =>
-          session.id === id ||
-          session._local_id === id
-      ) || null
-    );
-  }
-
-  return sessions[
-    sessions.length - 1
-  ];
+  const selected=id?sessions.find(x=>x.id===id||x._local_id===id):sessions[sessions.length-1];
+  if(!selected)return null;
+  if(Array.isArray(selected.points)&&selected.points.length)return selected;
+  return await window.INTZCloud.getSession(selected._local_id||selected.id);
 }
 
 function formatMMSS(seconds) {
@@ -517,64 +508,7 @@ function downloadBlob(
   );
 }
 
-function saveNotes() {
-  if (!SESSION) {
-    return;
-  }
-
-  const notes =
-    document.getElementById(
-      "notes"
-    );
-
-  if (!notes) {
-    return;
-  }
-
-  const sessions =
-    getNS("sessions", []);
-
-  const index =
-    sessions.findIndex(
-      session => {
-        if (
-          SESSION._local_id &&
-          session._local_id
-        ) {
-          return (
-            session._local_id ===
-            SESSION._local_id
-          );
-        }
-
-        return (
-          session.id === SESSION.id
-        );
-      }
-    );
-
-  if (index < 0) {
-    alert(
-      "Fant ikke økten i lokal lagring."
-    );
-
-    return;
-  }
-
-  sessions[index] = {
-    ...sessions[index],
-    notes: notes.value || "",
-    _updated_at:
-      new Date().toISOString(),
-    _sync_status: "pending"
-  };
-
-  SESSION = sessions[index];
-
-  setNS("sessions", sessions);
-
-  alert("Merknaden er lagret.");
-}
+async function saveNotes(){if(!SESSION)return;const n=document.getElementById("notes");if(!n)return;try{SESSION=await INTZCloud.queueSession({...SESSION,notes:n.value||"",_updated_at:new Date().toISOString()});alert("Merknaden er lagret og satt i synkroniseringskø.")}catch(e){alert("Kunne ikke lagre merknaden: "+e.message)}}
 
 function wireButtons() {
   const tcxButton =
@@ -846,13 +780,10 @@ function renderChart(session) {
   context.stroke();
 }
 
-function renderResults() {
-  SESSION = pickSession();
-
-  const noSession =
-    document.getElementById(
-      "no-session"
-    );
+async function renderResults() {
+  const noSession=document.getElementById("no-session");
+  if(noSession){noSession.textContent="Henter økt …";noSession.classList.remove("hidden");}
+  try{SESSION=await pickSession()}catch(e){if(noSession)noSession.textContent="Kunne ikke hente økten: "+e.message;return}
 
   if (
     !SESSION ||

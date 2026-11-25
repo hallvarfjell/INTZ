@@ -103,121 +103,7 @@ function syncStatusLabel(session) {
   return "Lokal";
 }
 
-async function deleteSession(
-  selectedSession,
-  deleteButton
-) {
-  if (
-    !confirm(
-      "Slette denne økta?"
-    )
-  ) {
-    return;
-  }
-
-  if (deleteButton) {
-    deleteButton.disabled = true;
-  }
-
-  try {
-    const allSessions =
-      getNS("sessions", []);
-
-    if (!Array.isArray(allSessions)) {
-      throw new Error(
-        "Øktlisten har ugyldig format."
-      );
-    }
-
-    const index =
-      findSessionIndex(
-        allSessions,
-        selectedSession
-      );
-
-    if (index < 0) {
-      throw new Error(
-        "Fant ikke økten i lokal lagring."
-      );
-    }
-
-    /*
-     * Fysisk fjerning brukes her.
-     *
-     * Dette reduserer lagringsbruken umiddelbart og virker
-     * også dersom localStorage ligger nær kvotegrensen.
-     *
-     * cloud-sync.js har en known-ID-liste og oppdager ved
-     * neste syncUp at en kjent økt er borte.
-     */
-    allSessions.splice(index, 1);
-
-    setNS(
-      "sessions",
-      allSessions
-    );
-
-    renderLog();
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "intz:datachange",
-        {
-          detail: {
-            type: "session-deleted",
-            id:
-              selectedSession._local_id ||
-              selectedSession.id
-          }
-        }
-      )
-    );
-
-    const cloudEnabled =
-      !!getNS(
-        "cloudEnabled",
-        false
-      );
-
-    if (
-      cloudEnabled &&
-      window.INTZCloud
-    ) {
-      try {
-        await window.INTZCloud
-          .syncUp();
-
-        renderLog();
-      } catch (syncError) {
-        console.warn(
-          "[INTZ log] Økten ble slettet lokalt, men skysynkronisering feilet:",
-          syncError
-        );
-
-        alert(
-          "Økten ble slettet lokalt, men slettingen ble ikke synkronisert. Prøv Synk opp senere."
-        );
-      }
-    }
-  } catch (error) {
-    console.error(
-      "[INTZ log] Sletting feilet:",
-      error
-    );
-
-    alert(
-      "Kunne ikke slette økten: " +
-      (
-        error?.message ||
-        String(error)
-      )
-    );
-
-    if (deleteButton) {
-      deleteButton.disabled = false;
-    }
-  }
-}
+async function deleteSession(selectedSession,deleteButton){if(!confirm("Slette denne økta?"))return;if(deleteButton)deleteButton.disabled=true;try{await window.INTZCloud.deleteSession(selectedSession._local_id||selectedSession.id);renderLog()}catch(e){alert("Sletting feilet: "+e.message);if(deleteButton)deleteButton.disabled=false}}
 
 function createSessionRow(session) {
   const row =
@@ -399,3 +285,5 @@ document.addEventListener(
   "DOMContentLoaded",
   renderLog
 );
+function wireTcxImport(){const b=document.getElementById("tcx-import"),i=document.getElementById("tcx-file"),m=document.getElementById("tcx-import-status");if(!b||!i||b.dataset.wired)return;b.dataset.wired="1";b.onclick=()=>i.click();i.onchange=async()=>{let f=i.files?.[0];if(!f)return;try{m.textContent="Importerer …";let x=await INTZTCX.importFile(f);m.textContent=x?`Importert ${x.points.length} datapunkter. Venter på skysynk.`:"Import avbrutt.";renderLog()}catch(e){m.textContent="Import feilet: "+e.message}finally{i.value=""}}}
+document.addEventListener("DOMContentLoaded",wireTcxImport);addEventListener("intz:viewchange",e=>e.detail?.view==="log"&&wireTcxImport());

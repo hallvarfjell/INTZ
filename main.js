@@ -335,7 +335,7 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  }
  }catch(e){}
  }
-function finishSession() {
+async function finishSession() {
   /*
    * All avslutning av en økt går gjennom denne funksjonen.
    * Funksjonen må derfor:
@@ -475,15 +475,8 @@ function finishSession() {
         );
     }
 
-    const sessions =
-      getNS("sessions", []);
-
-    sessions.push(session);
-
-    setNS(
-      "sessions",
-      sessions
-    );
+    if (!window.INTZCloud || !window.INTZSessionStore) throw new Error("Lagringsmodulen er ikke lastet.");
+    session = await window.INTZCloud.queueSession(session);
 
     workout._saved = true;
 
@@ -794,9 +787,9 @@ function finishSession() {
  row.appendChild(cb); row.appendChild(span); list.appendChild(row);
  });
  }
- function computeGhostAverage(){
+ async function computeGhostAverage(){
  const ids=Array.from(STATE.ghost.ids||[]);
- const sessions=getNS('sessions',[]).filter(s=> ids.includes(s.id));
+ const sessions=(await Promise.all(ids.map(id=>window.INTZCloud.getSession(id,{cache:true}).catch(()=>null)))).filter(Boolean);
  if(!sessions.length){ STATE.ghost.avg=null; return; }
  const perSess = sessions.map(s=>{
  const pts=s.points||[]; if(!pts.length) return {dur:0, hr:[], w:[]};
@@ -1076,10 +1069,11 @@ window.INTZWorkoutNavigation = {
  el('ghost-clear-all')?.addEventListener('click', (e)=>{
  e.preventDefault(); el('ghost-list')?.querySelectorAll('input[type=checkbox]')?.forEach(c=>c.checked=false);
  });
- el('ghost-apply')?.addEventListener('click', ()=>{
+ el('ghost-apply')?.addEventListener('click', async ()=>{
  const checks=el('ghost-list')?.querySelectorAll('input[type=checkbox]');
  STATE.ghost.ids=new Set(Array.from(checks||[]).filter(c=>c.checked).map(c=>c.value));
- computeGhostAverage();
+ setNS('ghostSessionIds',Array.from(STATE.ghost.ids));
+ await computeGhostAverage();
  el('ghost-menu')?.classList.add('hidden');
  draw(); // vis ghost umiddelbart
  });
