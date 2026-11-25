@@ -787,9 +787,9 @@ async function finishSession() {
  row.appendChild(cb); row.appendChild(span); list.appendChild(row);
  });
  }
- async function computeGhostAverage(){
+ function computeGhostAverage(){
  const ids=Array.from(STATE.ghost.ids||[]);
- const sessions=(await Promise.all(ids.map(id=>window.INTZCloud.getSession(id,{cache:true}).catch(()=>null)))).filter(Boolean);
+ const sessions=getNS('sessions',[]).filter(s=> ids.includes(s.id));
  if(!sessions.length){ STATE.ghost.avg=null; return; }
  const perSess = sessions.map(s=>{
  const pts=s.points||[]; if(!pts.length) return {dur:0, hr:[], w:[]};
@@ -1069,11 +1069,10 @@ window.INTZWorkoutNavigation = {
  el('ghost-clear-all')?.addEventListener('click', (e)=>{
  e.preventDefault(); el('ghost-list')?.querySelectorAll('input[type=checkbox]')?.forEach(c=>c.checked=false);
  });
- el('ghost-apply')?.addEventListener('click', async ()=>{
+ el('ghost-apply')?.addEventListener('click', ()=>{
  const checks=el('ghost-list')?.querySelectorAll('input[type=checkbox]');
  STATE.ghost.ids=new Set(Array.from(checks||[]).filter(c=>c.checked).map(c=>c.value));
- setNS('ghostSessionIds',Array.from(STATE.ghost.ids));
- await computeGhostAverage();
+ computeGhostAverage();
  el('ghost-menu')?.classList.add('hidden');
  draw(); // vis ghost umiddelbart
  });

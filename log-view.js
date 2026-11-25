@@ -103,7 +103,7 @@ function syncStatusLabel(session) {
   return "Lokal";
 }
 
-async function deleteSession(selectedSession,deleteButton){if(!confirm("Slette denne økta?"))return;if(deleteButton)deleteButton.disabled=true;try{await INTZCloud.deleteSession(selectedSession._local_id||selectedSession.id);renderLog()}catch(e){alert("Sletting feilet: "+e.message);if(deleteButton)deleteButton.disabled=false}}
+async function deleteSession(selectedSession,deleteButton){if(!confirm("Slette denne økta?"))return;if(deleteButton)deleteButton.disabled=true;try{await window.INTZCloud.deleteSession(selectedSession._local_id||selectedSession.id);renderLog()}catch(e){alert("Sletting feilet: "+e.message);if(deleteButton)deleteButton.disabled=false}}
 
 function createSessionRow(session) {
   const row =
@@ -285,5 +285,5 @@ document.addEventListener(
   "DOMContentLoaded",
   renderLog
 );
-function wireTcxImport(){const b=document.getElementById("tcx-import"),i=document.getElementById("tcx-file"),m=document.getElementById("tcx-import-status");if(!b||!i||b.dataset.wired)return;b.dataset.wired="1";b.onclick=()=>i.click();i.onchange=async()=>{let f=i.files?.[0];if(!f)return;try{m.textContent="Importerer …";let x=await INTZTCX.importFile(f);m.textContent=`Importert ${x.points.length} datapunkter. Venter på skysynk.`;renderLog()}catch(e){m.textContent="Import feilet: "+e.message}finally{i.value=""}}}
+function wireTcxImport(){const b=document.getElementById("tcx-import"),i=document.getElementById("tcx-file"),m=document.getElementById("tcx-import-status");if(!b||!i||b.dataset.wired)return;b.dataset.wired="1";b.onclick=()=>i.click();i.onchange=async()=>{const f=i.files?.[0];if(!f)return;try{m.textContent="Importerer …";const x=await INTZTCX.importFile(f);m.textContent=`Importert ${x.points.length} datapunkter.`;renderLog()}catch(e){m.textContent="Import feilet: "+e.message}finally{i.value=""}}}
 document.addEventListener("DOMContentLoaded",wireTcxImport);addEventListener("intz:viewchange",e=>e.detail?.view==="log"&&wireTcxImport());
