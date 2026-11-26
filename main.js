@@ -50,7 +50,8 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  ghost:{enabled:false, ids:new Set(), avg:null},
  cal:{K:Number(getNS('calK',1.0)), Crun:Number(getNS('cRun',1.0))},
  metrics:{elevGainM:0, tss:0},
- totalSec:0
+ totalSec:0,
+ pausedAt:null, totalPausedMs:0
  };
  function clamp(n,min,max){ return Math.min(max, Math.max(min,n)); }
  function fmtMMSS(s){ s=Math.max(0,Math.floor(s)); const m=Math.floor(s/60), ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
@@ -203,14 +204,17 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  }
  function startTicker(){
  if(STATE.ticker) return;
- if(STATE.workout && !STATE.workout.startedAt){
- STATE.workout.startedAt=new Date().toISOString();
- if(!STATE.logger.active) startLogger();
+ const now=Date.now();
+ if(STATE.workout && !STATE.workout.startedAt){ STATE.workout.startedAt=new Date(now).toISOString(); STATE.pausedAt=null; STATE.totalPausedMs=0; if(!STATE.logger.active) startLogger(); }
+ else if(STATE.workout && STATE.pausedAt!=null){ STATE.totalPausedMs+=Math.max(0,now-STATE.pausedAt); STATE.pausedAt=null; }
+ STATE.ticker=setInterval(tickWorkout,1000); toggleStartPauseUI(true);
  }
- STATE.ticker=setInterval(tickWorkout,1000);
- toggleStartPauseUI(true);
+ function stopTicker(markPaused=true){
+ if(STATE.ticker){clearInterval(STATE.ticker);STATE.ticker=null;}
+ if(markPaused&&STATE.workout&&STATE.workout.startedAt&&STATE.workout.phase!=='done'&&STATE.pausedAt==null)STATE.pausedAt=Date.now();
+ toggleStartPauseUI(false);
  }
- function stopTicker(){ if(STATE.ticker){ clearInterval(STATE.ticker); STATE.ticker=null; } toggleStartPauseUI(false); }
+ function activeNow(){return STATE.pausedAt!=null?STATE.pausedAt:Date.now();}
  function toggleStartPauseUI(running){
  const icon=el('sp-icon'), label=el('sp-label'); if(!icon || !label) return;
  if(running){ icon.className='ph-pause'; label.textContent='Pause'; }
@@ -298,7 +302,7 @@ function delNS(k){ localStorage.removeItem(nsKey(k)); }
  }
  function tickWorkout(){
  if(!STATE.workout) return;
- const w=STATE.workout; if(w.phase==='done'){ stopTicker(); return; }
+ const w=STATE.workout; if(w.phase==='done'){ stopTicker(false); return; }
  w.tLeft = Math.max(0,(w.tLeft||0)-1);
  if(w.tLeft<=0){ nextPhase(); }
  updateWorkoutUI();
@@ -672,7 +676,7 @@ async function finishSession() {
  const plotW=W-padL-padR, plotH=H-padT-padB;
  ctx.clearRect(0,0,W,H);
  if(plotW<=0 || plotH<=0) return;
- const now=Date.now();
+ const now=activeNow();
  const xmin=now-STATE.windowSec*1000, xmax=now;
  const showHR = document.getElementById('show-hr')?.checked ?? getNS('defHR',true);
  const showWatt = document.getElementById('show-watt')?.checked ?? getNS('defWatt',true);
@@ -780,38 +784,19 @@ async function finishSession() {
  }
  sessions.slice().reverse().forEach(s=>{
  const dt=new Date(s.startedAt||Date.now()).toLocaleString();
- const id=s.id;
+ const id=s._local_id||s.id;
  const row=document.createElement('label'); row.className='menu-item';
  const cb=document.createElement('input'); cb.type='checkbox'; cb.value=id; cb.checked=STATE.ghost.ids.has(id);
  const span=document.createElement('span'); span.textContent=`${s.name||'Økt'} – ${dt}`;
  row.appendChild(cb); row.appendChild(span); list.appendChild(row);
  });
  }
- function computeGhostAverage(){
- const ids=Array.from(STATE.ghost.ids||[]);
- const sessions=getNS('sessions',[]).filter(s=> ids.includes(s.id));
- if(!sessions.length){ STATE.ghost.avg=null; return; }
- const perSess = sessions.map(s=>{
- const pts=s.points||[]; if(!pts.length) return {dur:0, hr:[], w:[]};
- const t0=pts[0].ts; const tN=pts[pts.length-1].ts;
- const dur=Math.max(0, Math.round((tN - t0)/1000));
- const hr=new Array(dur+1).fill(null), w=new Array(dur+1).fill(null);
- let idx=0;
- for(let sec=0; sec<=dur; sec++){
- const target=t0+sec*1000;
- while(idx+1<pts.length && pts[idx+1].ts<=target) idx++;
- const p=pts[idx]; hr[sec]=p.hr||0; w[sec]=Math.round(p.watt||0);
- }
- return {dur, hr, w};
- });
- const maxDur = Math.max(...perSess.map(x=>x.dur));
- const avgHR=new Array(maxDur+1).fill(0); const avgW=new Array(maxDur+1).fill(0); const cnt=new Array(maxDur+1).fill(0);
- perSess.forEach(ss=>{ for(let i=0;i<=ss.dur;i++){ if(ss.hr[i]!=null){ avgHR[i]+=ss.hr[i]; avgW[i]+=ss.w[i]; cnt[i]++; } } });
- for(let i=0;i<=maxDur;i++){
- if(cnt[i]>0){ avgHR[i]=Math.round(avgHR[i]/cnt[i]); avgW[i]=Math.round(avgW[i]/cnt[i]); }
- else { avgHR[i]=null; avgW[i]=null; }
- }
- STATE.ghost.avg={dur:maxDur, hr:avgHR, w:avgW};
+ async function computeGhostAverage(){
+ const ids=Array.from(STATE.ghost.ids||[]); if(!ids.length){STATE.ghost.avg=null;return;}
+ const sessions=(await Promise.all(ids.map(async id=>{try{const local=(getNS('sessions',[])||[]).find(s=>(s._local_id||s.id)===id);if(local?.points?.length)return local;return await window.INTZCloud?.getSession(id,{cache:true});}catch(e){console.warn('[INTZ] Ghost',id,e);return null;}}))).filter(s=>s?.points?.length);
+ if(!sessions.length){STATE.ghost.avg=null;return;}
+ const per=sessions.map(s=>{const pts=(s.points||[]).map(p=>({...p,ts:Number(p.ts)||Date.parse(p.iso||'')})).filter(p=>Number.isFinite(p.ts)).sort((a,b)=>a.ts-b.ts);if(!pts.length)return{dur:0,hr:[],w:[]};const t0=pts[0].ts,dur=Math.max(0,Math.round((pts.at(-1).ts-t0)/1000)),hr=new Array(dur+1).fill(null),w=new Array(dur+1).fill(null);let j=0;for(let i=0;i<=dur;i++){const target=t0+i*1000;while(j+1<pts.length&&pts[j+1].ts<=target)j++;const p=pts[j];hr[i]=+p.hr>0?+p.hr:null;w[i]=Number.isFinite(+p.watt)?+p.watt:null;}return{dur,hr,w};});
+ const dur=Math.max(...per.map(x=>x.dur)),hr=new Array(dur+1).fill(null),w=new Array(dur+1).fill(null);for(let i=0;i<=dur;i++){const hs=per.map(x=>x.hr[i]).filter(Number.isFinite),ws=per.map(x=>x.w[i]).filter(Number.isFinite);if(hs.length)hr[i]=Math.round(hs.reduce((a,b)=>a+b,0)/hs.length);if(ws.length)w[i]=Math.round(ws.reduce((a,b)=>a+b,0)/ws.length);}STATE.ghost.avg={dur,hr,w};
  }
  function computeRemainingSec(w){
  if(!w) return 0;
@@ -914,15 +899,8 @@ if (STATE.workout) {
         STATE.workout.startedAt
       ).getTime();
 
-    elapsed =
-      Number.isFinite(start)
-        ? Math.max(
-            0,
-            Math.round(
-              (now - start) / 1000
-            )
-          )
-        : 0;
+    const currentPause=STATE.pausedAt!=null?Math.max(0,now-STATE.pausedAt):0;
+      elapsed=Number.isFinite(start)?Math.max(0,Math.round((now-start-STATE.totalPausedMs-currentPause)/1000)):0;
   } else {
     elapsed = 0;
   }
@@ -1049,7 +1027,7 @@ window.INTZWorkoutNavigation = {
  el('btn-discard')?.addEventListener('click', ()=>{
  if(confirm('Forkast økta (ikke lagre)?')){
  if(STATE.ticker) { clearInterval(STATE.ticker); STATE.ticker=null; }
- STATE.workout=null; STATE.logger.active=false; STATE.logger.points=[];
+ STATE.workout=null; STATE.logger.active=false; STATE.logger.points=[]; STATE.pausedAt=null; STATE.totalPausedMs=0;
  updateWorkoutUI(); draw();
  }
  });
@@ -1069,34 +1047,27 @@ window.INTZWorkoutNavigation = {
  el('ghost-clear-all')?.addEventListener('click', (e)=>{
  e.preventDefault(); el('ghost-list')?.querySelectorAll('input[type=checkbox]')?.forEach(c=>c.checked=false);
  });
- el('ghost-apply')?.addEventListener('click', ()=>{
+ el('ghost-apply')?.addEventListener('click', async ()=>{
  const checks=el('ghost-list')?.querySelectorAll('input[type=checkbox]');
  STATE.ghost.ids=new Set(Array.from(checks||[]).filter(c=>c.checked).map(c=>c.value));
- computeGhostAverage();
+ setNS('ghostSessionIds',Array.from(STATE.ghost.ids));
+ await computeGhostAverage();
+ if(el('ghost-enable'))el('ghost-enable').checked=STATE.ghost.ids.size>0;
  el('ghost-menu')?.classList.add('hidden');
  draw(); // vis ghost umiddelbart
  });
+ STATE.ghost.ids=new Set(getNS('ghostSessionIds',[]));
+ if(el('ghost-enable'))el('ghost-enable').checked=STATE.ghost.ids.size>0;
+ if(STATE.ghost.ids.size)computeGhostAverage().then(draw).catch(console.warn);
  populateWorkoutSelect();
  preselectIfRequested();
  ensureDefaultSelected();
  setInterval(()=>{
  try{
- const t=Date.now();
- if(STATE.hr!=null) STATE.series.hr.push({t,y:STATE.hr});
- const dispSpeed=displaySpeedKmh();
- STATE.series.speed.push({t,y:dispSpeed});
- const w=estimateWattExternal(dispSpeed, STATE.gradePct, STATE.massKg, STATE.cal.Crun, STATE.cal.K);
- STATE.series.watt.push({t,y:w});
- STATE.series.rpe.push({t,y:STATE.rpe});
- const cutoff=t-STATE.windowSec*1000;
- for(const k of ['hr','speed','watt','rpe']){
- const arr=STATE.series[k]; while(arr.length && arr[0].t<cutoff) arr.shift();
- }
- el('pulse') && (el('pulse').textContent = (STATE.hr!=null?STATE.hr:'--'));
- el('watt') && (el('watt').textContent = w||'--');
- draw();
- if(STATE.logger.active){ writeSample(t); }
- updateStatusCard();
+ const t=Date.now(),running=!!STATE.ticker;
+ const dispSpeed=displaySpeedKmh(),w=estimateWattExternal(dispSpeed,STATE.gradePct,STATE.massKg,STATE.cal.Crun,STATE.cal.K);
+ if(running){if(STATE.hr!=null)STATE.series.hr.push({t,y:STATE.hr});STATE.series.speed.push({t,y:dispSpeed});STATE.series.watt.push({t,y:w});STATE.series.rpe.push({t,y:STATE.rpe});const cutoff=t-STATE.windowSec*1000;for(const k of ['hr','speed','watt','rpe']){const a=STATE.series[k];while(a.length&&a[0].t<cutoff)a.shift();}if(STATE.logger.active)writeSample(t);}
+ el('pulse')&&(el('pulse').textContent=STATE.hr!=null?STATE.hr:'--');el('watt')&&(el('watt').textContent=w||'--');draw();updateStatusCard();
  }catch(e){ showErr(e); }
  },1000);
  requestWakeLock();
